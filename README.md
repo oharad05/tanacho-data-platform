@@ -14,8 +14,8 @@ Google Drive (共有フォルダ)
 GCS (raw/)  - Excelファイル保存
     ↓ [2. transform_raw_to_proceed.py]
 GCS (proceed/) - CSV変換・カラムマッピング済み
-    ↓ [3. BigQuery連携 (未実装)]
-BigQuery
+    ↓ [3. load_to_bigquery.py]
+BigQuery (パーティション化テーブル)
 ```
 
 ## 環境設定
@@ -35,6 +35,7 @@ BigQuery
 ├── function/             # Cloud Functions用（旧版）
 ├── sync_drive_to_gcs.py  # Drive → GCS連携
 ├── transform_raw_to_proceed.py # Excel → CSV変換
+├── load_to_bigquery.py   # CSV → BigQuery連携
 └── setup_instructions.md # セットアップ手順書
 ```
 
@@ -50,13 +51,23 @@ python sync_drive_to_gcs.py 202509
 python transform_raw_to_proceed.py 202509
 ```
 
-### 3. 結果確認
+### 3. CSV → BigQuery連携
+```bash
+python load_to_bigquery.py 202509
+# --replaceオプションで既存データを置換
+python load_to_bigquery.py 202509 --replace
+```
+
+### 4. 結果確認
 ```bash
 # raw/ の確認
 gsutil ls -l gs://data-platform-landing-prod/raw/202509/
 
 # proceed/ の確認
 gsutil ls -l gs://data-platform-landing-prod/proceed/202509/
+
+# BigQuery確認
+bq ls --project_id=data-platform-prod-475201 corporate_data
 ```
 
 ## 対応テーブル
@@ -82,5 +93,23 @@ gsutil ls -l gs://data-platform-landing-prod/proceed/202509/
 ## 依存ライブラリ
 
 ```bash
-pip install google-cloud-storage pandas openpyxl google-api-python-client
+pip install google-cloud-storage pandas openpyxl google-api-python-client google-cloud-bigquery
 ```
+
+## 実装状況 (2025-10-24)
+
+### 完了済み
+- ✅ Google Drive → GCS (raw/) 連携: 7ファイル同期成功
+- ✅ Excel → CSV変換 (raw/ → proceed/): 7ファイル変換成功
+- ✅ BigQuery連携: 5/7テーブルロード成功
+  - sales_target_and_achievements (790行)
+  - billing_balance (1,020行)
+  - ledger_income (63行)
+  - department_summary (339行)
+  - ledger_loss (6行)
+
+### 対応中の課題
+- ⚠️ internal_interest: 日付フォーマット変換エラー
+- ⚠️ profit_plan_term: 日付フォーマット変換エラー
+  - 原因: datetime64型の値が正しく文字列に変換されていない
+  - 対応予定: transform_raw_to_proceed.pyの日付変換処理改善

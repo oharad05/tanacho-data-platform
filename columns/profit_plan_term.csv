@@ -1,5 +1,5 @@
 jp_name,en_name,type,description
-期間,period,INT64,期間
+期間,period,DATE,期間
 項目,item,STRING,項目
 東京支店計,tokyo_branch_total,NUMERIC,東京支店計
 工事営業部計,construction_sales_department_total,NUMERIC,工事営業部計

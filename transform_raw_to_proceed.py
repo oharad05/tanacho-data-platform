@@ -58,6 +58,33 @@ def convert_date_format(value: Any, date_type: str) -> str:
     if pd.isna(value) or value == '' or value is None:
         return ''
     
+    # 数値の場合の処理
+    if isinstance(value, (int, float)):
+        # Excelのシリアル日付の場合（1900年1月1日からの日数）
+        if value > 0 and value < 100000:
+            try:
+                # Excel日付の起点は1899-12-30
+                excel_base = pd.Timestamp('1899-12-30')
+                dt = excel_base + pd.Timedelta(days=int(value))
+                if date_type == 'DATETIME':
+                    return dt.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    return dt.strftime('%Y-%m-%d')
+            except:
+                pass
+        
+        # Unixタイムスタンプ（ナノ秒）の場合
+        elif value > 1e15:
+            try:
+                # ナノ秒をDatetimeに変換
+                dt = pd.to_datetime(value, unit='ns')
+                if date_type == 'DATETIME':
+                    return dt.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    return dt.strftime('%Y-%m-%d')
+            except:
+                pass
+    
     # 文字列に変換
     value_str = str(value)
     
@@ -111,7 +138,14 @@ def apply_data_type_conversion(df: pd.DataFrame, column_mapping: Dict) -> pd.Dat
         
         # DATE/DATETIME型
         if data_type in ['DATE', 'DATETIME']:
-            df[col] = df[col].apply(lambda x: convert_date_format(x, data_type))
+            # datetime64型の場合は直接変換
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                if data_type == 'DATE':
+                    df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d')
+                else:
+                    df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                df[col] = df[col].apply(lambda x: convert_date_format(x, data_type))
         
         # INT64型
         elif data_type == 'INT64':
@@ -200,6 +234,15 @@ def transform_excel_to_csv(
         
         # 日本語カラム名を英語に変換（型変換前に実施）
         jp_column_mapping = {jp: info for jp, info in column_mapping.items()}
+        
+        # 日付列の事前処理（datetime64型の処理）
+        for jp_col, info in jp_column_mapping.items():
+            if jp_col in df.columns and info['type'] in ['DATE', 'DATETIME']:
+                if pd.api.types.is_datetime64_any_dtype(df[jp_col]):
+                    if info['type'] == 'DATE':
+                        df[jp_col] = df[jp_col].dt.strftime('%Y-%m-%d')
+                    else:
+                        df[jp_col] = df[jp_col].dt.strftime('%Y-%m-%d %H:%M:%S')
         
         # データ型変換
         df = apply_data_type_conversion(df, jp_column_mapping)
