@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+bin/
+lib/
+include/
+pip-selfcheck.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Google Cloud credentials
+*.json
+!columns/*.csv
+!mapping/*.csv
+service-account-key.json
+credentials.json
+
+# Temporary files
+*.log
+*.tmp
+/tmp/
+temp/
+
+# Data files (exclude large data)
+*.xlsx
+*.xls
+*.zip
+
+# But keep sample/test data
+!test_data/
+
+# Cache
+.cache/
+*.cache
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Output directories (but keep structure)
+raw/
+proceed/
+processed/
+
+# Keep important config files
+!requirements.txt
+!Dockerfile
+!.gitignore

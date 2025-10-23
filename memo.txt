@@ -1,0 +1,185 @@
+CREATE SCHEMA IF NOT EXISTS `corporate_data`;
+
+## sales_target_and_achievements
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.sales_target_and_achievements` (
+sales_accounting_period DATE,
+branch_code INT64,
+branch_name STRING,
+department_code INT64,
+department_name STRING,
+staff_code INT64,
+staff_name STRING,
+major_department_code INT64,
+major_department_name STRING,
+division_code INT64,
+division_name STRING,
+sales_target INT64,
+sales_actual INT64,
+gross_profit_target INT64,
+gross_profit_actual INT64,
+prev_year_sales_target INT64,
+prev_year_sales_actual INT64,
+prev_year_gross_profit_target INT64,
+prev_year_gross_profit_actual INT64
+)
+PARTITION BY sales_accounting_period
+CLUSTER BY branch_code;
+
+## billing_balance
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.billing_balance` (
+sales_month DATE,
+branch_code INT64,
+branch_name STRING,
+current_month_accounts_receivable INT64,
+unsettled_bill_balance INT64,
+current_month_sales_balance INT64
+)
+PARTITION BY sales_month
+CLUSTER BY branch_code;
+
+## ledger_income
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.ledger_income` (
+accounting_month DATETIME,
+calendar_month DATETIME,
+slip_date DATETIME,
+classification_type STRING,
+slip_no INT64,
+counterpart_account_code NUMERIC,
+counterpart_account_name STRING,
+counterpart_sub_account_code STRING,
+counterpart_sub_account_name STRING,
+counterpart_department_code NUMERIC,
+counterpart_department_name STRING,
+counterpart_customer_code STRING,
+counterpart_customer_name STRING,
+own_account_code INT64,
+own_account_name STRING,
+own_sub_account_code INT64,
+own_sub_account_name STRING,
+own_department_code INT64,
+own_department_name STRING,
+own_customer_code STRING,
+own_customer_name STRING,
+description_comment STRING,
+tax_category_code INT64,
+tax_category_name STRING,
+deduction_rate STRING,
+tax_rate_type STRING,
+tax_rate NUMERIC,
+debit STRING,
+credit INT64,
+amount INT64,
+balance INT64
+)
+PARTITION BY DATE(slip_date)
+CLUSTER BY classification_type;
+
+## department_summary
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.department_summary` (
+sales_accounting_period DATE,
+code STRING,
+subject_name STRING,
+total INT64,
+head_office INT64,
+construction_sales_section_1 INT64,
+renovation_section INT64,
+operations_section INT64,
+glass_building_material_sales_section INT64,
+construction_sales_department INT64,
+construction_division_1 INT64,
+glass_building_material INT64,
+resin INT64,
+construction INT64,
+operations INT64,
+gs INT64,
+construction_division_2 INT64,
+fukuhoku_daiwa_glass INT64,
+fukuhoku_daiwa_welding INT64,
+fukuhoku_daiwa_branch INT64,
+fukuhoku_nagawa INT64,
+fukuhoku_moroguchi INT64,
+fukuhoku_techno INT64,
+fukuhoku_common INT64,
+construction_department INT64,
+glass_building_material_sales_department INT64,
+operations_department INT64,
+execution_department INT64,
+progress_sales_for_settlement INT64,
+completed_sales_for_settlement INT64,
+others INT64
+)
+PARTITION BY sales_accounting_period
+CLUSTER BY code;
+
+## internal_interest
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.internal_interest` (
+branch STRING,
+category STRING,
+breakdown STRING,
+amount INT64,
+interest_rate NUMERIC,
+interest INT64,
+year_month date
+)
+PARTITION BY year_month
+CLUSTER BY branch;
+
+## profit_plan_term
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.profit_plan_term` (
+period date,
+item STRING,
+tokyo_branch_total NUMERIC,
+construction_sales_department_total NUMERIC,
+company_sasaki NUMERIC,
+company_asai NUMERIC,
+company_ogasawara NUMERIC,
+company_takaishi NUMERIC,
+glass_construction_total NUMERIC,
+company_yamamoto NUMERIC,
+glass_building_material_sales_department NUMERIC,
+glass_construction NUMERIC,
+building_sash NUMERIC,
+glass_sales NUMERIC,
+sash_sales NUMERIC,
+sash_finished_products NUMERIC,
+others NUMERIC
+)
+PARTITION BY period
+CLUSTER BY item;
+
+## ledger_loss
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.ledger_loss` (
+accounting_month DATETIME,
+calendar_month DATETIME,
+slip_date DATETIME,
+classification_type STRING,
+slip_no INT64,
+counterpart_account_code INT64,
+counterpart_account_name STRING,
+counterpart_sub_account_code STRING,
+counterpart_sub_account_name STRING,
+counterpart_department_code INT64,
+counterpart_department_name STRING,
+counterpart_customer_code STRING,
+counterpart_customer_name STRING,
+own_account_code INT64,
+own_account_name STRING,
+own_sub_account_code STRING,
+own_sub_account_name STRING,
+own_department_code INT64,
+own_department_name STRING,
+own_customer_code STRING,
+own_customer_name STRING,
+description STRING,
+tax_category_code INT64,
+tax_category_name STRING,
+deduction_rate STRING,
+tax_rate_type STRING,
+tax_rate NUMERIC,
+debit INT64,
+credit STRING,
+amount INT64,
+balance INT64
+)
+PARTITION BY DATE(slip_date)
+CLUSTER BY classification_type;
