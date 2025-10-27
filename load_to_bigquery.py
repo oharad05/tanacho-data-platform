@@ -2,11 +2,13 @@
 """
 proceed/ → BigQuery 連携スクリプト
 CSVファイルをBigQueryテーブルにロード（月次APPENDモード）
+テーブルとカラムの説明も自動設定
 """
 
 import os
 import sys
 import time
+import pandas as pd
 from typing import List, Dict, Optional
 from google.cloud import bigquery
 from google.cloud import storage
@@ -16,6 +18,8 @@ from google.cloud.exceptions import GoogleCloudError
 PROJECT_ID = "data-platform-prod-475201"
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = "data-platform-landing-prod"
+MAPPING_FILE = "mapping/excel_mapping.csv"
+COLUMNS_PATH = "columns"
 
 # テーブル定義とパーティション列のマッピング
 TABLE_CONFIG = {
@@ -53,6 +57,104 @@ def create_bigquery_client():
     """BigQueryクライアントの作成"""
     client = bigquery.Client(project=PROJECT_ID)
     return client
+
+def load_table_name_mapping() -> Dict[str, str]:
+    """
+    テーブル名マッピング（日本語→英語）を読み込み
+
+    Returns:
+        {英語テーブル名: 日本語名}の辞書
+    """
+    if not os.path.exists(MAPPING_FILE):
+        print(f"⚠️  マッピングファイルが見つかりません: {MAPPING_FILE}")
+        return {}
+
+    df = pd.read_csv(MAPPING_FILE)
+    mapping = {}
+    for _, row in df.iterrows():
+        en_name = row['en_name']
+        jp_name = row['jp_name'].replace('.xlsx', '')  # 拡張子を除去
+        mapping[en_name] = jp_name
+
+    return mapping
+
+def load_column_descriptions(table_name: str) -> Dict[str, str]:
+    """
+    カラムの説明を読み込み
+
+    Args:
+        table_name: テーブル名（英語）
+
+    Returns:
+        {英語カラム名: 説明}の辞書
+    """
+    column_file = f"{COLUMNS_PATH}/{table_name}.csv"
+    if not os.path.exists(column_file):
+        print(f"⚠️  カラム定義ファイルが見つかりません: {column_file}")
+        return {}
+
+    df = pd.read_csv(column_file)
+    descriptions = {}
+    for _, row in df.iterrows():
+        en_name = row['en_name']
+        description = row['description']
+        descriptions[en_name] = description
+
+    return descriptions
+
+def update_table_and_column_descriptions(
+    client: bigquery.Client,
+    table_name: str
+) -> bool:
+    """
+    テーブルとカラムの説明を更新
+
+    Args:
+        client: BigQueryクライアント
+        table_name: テーブル名
+
+    Returns:
+        成功時True
+    """
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+
+    try:
+        # テーブルを取得
+        table = client.get_table(table_id)
+
+        # テーブル名マッピングを読み込み
+        table_mapping = load_table_name_mapping()
+        if table_name in table_mapping:
+            table.description = table_mapping[table_name]
+            print(f"   📝 テーブル説明を設定: {table_mapping[table_name]}")
+
+        # カラムの説明を読み込み
+        column_descriptions = load_column_descriptions(table_name)
+
+        # 既存のスキーマを取得し、説明を追加
+        new_schema = []
+        for field in table.schema:
+            description = column_descriptions.get(field.name, field.description)
+            new_field = bigquery.SchemaField(
+                name=field.name,
+                field_type=field.field_type,
+                mode=field.mode,
+                description=description,
+                fields=field.fields
+            )
+            new_schema.append(new_field)
+
+        table.schema = new_schema
+
+        # テーブルを更新
+        table = client.update_table(table, ["description", "schema"])
+        print(f"   ✅ {len(column_descriptions)}個のカラム説明を設定")
+
+        return True
+
+    except Exception as e:
+        print(f"   ⚠️  説明の更新に失敗: {e}")
+        return False
 
 def check_table_exists(client: bigquery.Client, table_name: str) -> bool:
     """テーブルの存在確認"""
@@ -234,6 +336,8 @@ def process_all_tables(yyyymm: str, replace_existing: bool = False):
         
         # BigQueryへロード
         if load_csv_to_bigquery(client, table_name, gcs_uri, yyyymm):
+            # テーブルとカラムの説明を更新
+            update_table_and_column_descriptions(client, table_name)
             success_count += 1
         else:
             error_count += 1

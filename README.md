@@ -8,6 +8,28 @@ Google Drive → GCS → BigQuery データパイプライン
 
 ## アーキテクチャ
 
+### 本番環境（Cloud Run）
+```
+Google Drive (共有フォルダ)
+    ↓
+[Pub/Sub: drive-monthly]
+    ↓
+[Cloud Run: drive-to-gcs]
+    ↓
+GCS (raw/)  - Excelファイル保存
+    ↓
+[Pub/Sub: transform-trigger]
+    ↓
+[Cloud Run: gcs-to-bq]
+    ├─ /transform: Excel → CSV変換
+    └─ /load: CSV → BigQuery
+    ↓
+GCS (proceed/) - CSV変換・カラムマッピング済み
+    ↓
+BigQuery (パーティション化テーブル)
+```
+
+### ローカル実行（開発・テスト用）
 ```
 Google Drive (共有フォルダ)
     ↓ [1. sync_drive_to_gcs.py]
@@ -41,17 +63,46 @@ BigQuery (パーティション化テーブル)
 
 ## 実行方法
 
-### 1. Google Drive → GCS (raw/)
+### 本番環境（Pub/Sub経由）
+
+#### 全体フローの実行
+```bash
+# drive-monthly トピックにメッセージを送信
+gcloud pubsub topics publish drive-monthly \
+  --message='{"yyyymm":"202509"}' \
+  --project=data-platform-prod-475201
+
+# 自動的に以下が実行されます:
+# 1. drive-to-gcs: Drive → GCS (raw/)
+# 2. gcs-to-bq: raw/ → proceed/ → BigQuery
+```
+
+#### 個別エンドポイントの実行
+```bash
+# Transform のみ実行
+curl -X POST https://gcs-to-bq-102847004309.asia-northeast1.run.app/transform \
+  -H "Content-Type: application/json" \
+  -d '{"yyyymm":"202509"}'
+
+# Load のみ実行
+curl -X POST https://gcs-to-bq-102847004309.asia-northeast1.run.app/load \
+  -H "Content-Type: application/json" \
+  -d '{"yyyymm":"202509", "replace":true}'
+```
+
+### ローカル実行（開発・テスト用）
+
+#### 1. Google Drive → GCS (raw/)
 ```bash
 python sync_drive_to_gcs.py 202509
 ```
 
-### 2. Excel → CSV変換 (raw/ → proceed/)
+#### 2. Excel → CSV変換 (raw/ → proceed/)
 ```bash
 python transform_raw_to_proceed.py 202509
 ```
 
-### 3. CSV → BigQuery連携
+#### 3. CSV → BigQuery連携
 ```bash
 python load_to_bigquery.py 202509
 # --replaceオプションで既存データを置換

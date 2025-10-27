@@ -19,6 +19,7 @@ from pathlib import Path
 PROJECT_ID = "data-platform-prod-475201"
 LANDING_BUCKET = "data-platform-landing-prod"
 COLUMNS_PATH = "columns"  # ローカルのカラム定義ファイルパス
+MONETARY_SCALE_FILE = "mapping/monetary_scale_conversion.csv"  # 金額変換設定ファイル
 
 def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
     """
@@ -193,16 +194,16 @@ def apply_data_type_conversion(df: pd.DataFrame, column_mapping: Dict) -> pd.Dat
 def rename_columns(df: pd.DataFrame, column_mapping: Dict) -> pd.DataFrame:
     """
     カラム名を日本語から英語に変換
-    
+
     Args:
         df: 変換対象のDataFrame
         column_mapping: カラムマッピング定義
-    
+
     Returns:
         カラム名変換後のDataFrame
     """
     rename_dict = {}
-    
+
     for jp_col in df.columns:
         if jp_col in column_mapping:
             en_col = column_mapping[jp_col]['en_name']
@@ -211,8 +212,78 @@ def rename_columns(df: pd.DataFrame, column_mapping: Dict) -> pd.DataFrame:
             print(f"⚠️  マッピング未定義のカラム: {jp_col}")
             # マッピングがない場合は元の名前を保持
             rename_dict[jp_col] = jp_col
-    
+
     return df.rename(columns=rename_dict)
+
+def load_monetary_scale_config() -> pd.DataFrame:
+    """金額単位変換設定を読み込み"""
+    if not os.path.exists(MONETARY_SCALE_FILE):
+        print(f"⚠️  金額変換設定ファイルが見つかりません: {MONETARY_SCALE_FILE}")
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(MONETARY_SCALE_FILE)
+        return df
+    except Exception as e:
+        print(f"⚠️  金額変換設定の読み込みエラー: {e}")
+        return pd.DataFrame()
+
+def apply_monetary_scale_conversion(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """
+    金額単位変換を適用
+
+    Args:
+        df: 変換対象のDataFrame（英語カラム名に変換済み）
+        table_name: テーブル名
+
+    Returns:
+        変換後のDataFrame
+    """
+    try:
+        # 金額変換設定を読み込み
+        config_df = load_monetary_scale_config()
+
+        if config_df.empty:
+            return df
+
+        # 対象テーブルの設定を取得
+        target_config = config_df[config_df['file_name'] == table_name]
+
+        if target_config.empty:
+            print(f"   金額変換設定なし: {table_name}")
+            return df
+
+        df = df.copy()
+
+        for _, config in target_config.iterrows():
+            condition_col = config['condition_column_name']
+            condition_values = eval(config['condition_column_value'])  # リスト文字列を評価
+            object_columns = eval(config['object_column_name'])  # リスト文字列を評価
+            convert_value = float(config['convert_value'])
+
+            # 条件に一致する行をフィルタ
+            if condition_col not in df.columns:
+                print(f"⚠️  条件カラムが存在しません: {condition_col}")
+                continue
+
+            mask = df[condition_col].isin(condition_values)
+
+            # 対象カラムを変換
+            for col in object_columns:
+                if col in df.columns:
+                    # 条件に一致する行のみ変換
+                    df.loc[mask, col] = pd.to_numeric(df.loc[mask, col], errors='coerce') * convert_value
+                    print(f"   💰 {col} を{convert_value}倍に変換（条件: {condition_col} in {condition_values}）")
+                else:
+                    print(f"⚠️  変換対象カラムが存在しません: {col}")
+
+        return df
+
+    except Exception as e:
+        print(f"⚠️  金額変換エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return df
 
 def transform_excel_to_csv(
     input_path: str,
@@ -273,10 +344,13 @@ def transform_excel_to_csv(
         
         # データ型変換
         df = apply_data_type_conversion(df, jp_column_mapping)
-        
+
         # カラム名変換
         df = rename_columns(df, jp_column_mapping)
-        
+
+        # 金額単位変換（カラム名変換後に実行）
+        df = apply_monetary_scale_conversion(df, table_name)
+
         # CSV出力
         df.to_csv(output_path, index=False, encoding='utf-8')
         print(f"   出力: {output_path}")
