@@ -1,3 +1,16 @@
+-- internal_interestテーブルのスキーマ修正（year_monthをDATE型に）
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.internal_interest` (
+branch STRING,
+category STRING,
+breakdown STRING,
+amount INT64,
+interest_rate NUMERIC,
+interest INT64,
+year_month DATE
+)
+PARTITION BY year_month
+CLUSTER BY branch;
+
 -- sales_target_and_achievementsテーブルを正しいスキーマで再作成
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data.sales_target_and_achievements` (
 sales_accounting_period DATE,

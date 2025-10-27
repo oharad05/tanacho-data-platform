@@ -5,4 +5,4 @@ jp_name,en_name,type,description
 金額,amount,INT64,金額
 利率,interest_rate,NUMERIC,利率
 利息,interest,INT64,利息
-年月,year_month,INT64,年月
+年月,year_month,DATE,年月

@@ -44,13 +44,14 @@ def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
         }
     return mapping
 
-def convert_date_format(value: Any, date_type: str) -> str:
+def convert_date_format(value: Any, date_type: str, column_name: str = '') -> str:
     """
     日付フォーマットの変換
     
     Args:
         value: 変換対象の値
         date_type: DATE or DATETIME
+        column_name: カラム名（特殊処理用）
     
     Returns:
         変換後の日付文字列
@@ -87,6 +88,29 @@ def convert_date_format(value: Any, date_type: str) -> str:
     
     # 文字列に変換
     value_str = str(value)
+    
+    # internal_interestの年月カラム特殊処理（例: "2025年9月" → "2025-09-01"）
+    if column_name == '年月' and '年' in value_str and '月' in value_str:
+        try:
+            # "2025年9月" のような形式から年月を抽出
+            match = re.match(r'(\d{4})年(\d{1,2})月', value_str)
+            if match:
+                year = match.group(1)
+                month = match.group(2).zfill(2)
+                return f"{year}-{month}-01"
+        except:
+            pass
+    
+    # profit_plan_termの期間カラム特殊処理（同様）
+    if column_name == '期間' and '年' in value_str and '月' in value_str:
+        try:
+            match = re.match(r'(\d{4})年(\d{1,2})月', value_str)
+            if match:
+                year = match.group(1)
+                month = match.group(2).zfill(2)
+                return f"{year}-{month}-01"
+        except:
+            pass
     
     # DATE型の処理
     if date_type == 'DATE':
@@ -145,7 +169,7 @@ def apply_data_type_conversion(df: pd.DataFrame, column_mapping: Dict) -> pd.Dat
                 else:
                     df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
             else:
-                df[col] = df[col].apply(lambda x: convert_date_format(x, data_type))
+                df[col] = df[col].apply(lambda x: convert_date_format(x, data_type, col))
         
         # INT64型
         elif data_type == 'INT64':
@@ -229,6 +253,9 @@ def transform_excel_to_csv(
         if isinstance(df, dict):
             # 最初のシートを取得
             df = list(df.values())[0]
+        
+        # カラム名の改行を除去
+        df.columns = [col.replace('\n', '') if isinstance(col, str) else col for col in df.columns]
         
         print(f"   データ: {len(df)}行 × {len(df.columns)}列")
         
