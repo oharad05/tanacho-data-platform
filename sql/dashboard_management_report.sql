@@ -28,10 +28,10 @@
  ・スプレッドシートに加工ロジックを書いて頂いておりますが､この計算を行っているエクセルファイルなどはございますか?(もしあれば､整合性検証の際にもそちらと比較すると良いと考えております｡)
 
 ■todo
-・前年実績を取得する処理 → ✅完了（sales_actual_prev_yearで1年前のデータを取得）
-・千円→円の変換 → ✅完了（profit_plan_dataで実装済み）
+・前年実績を取得する処理
+・千円→円の変換
 ・"売上総利益の前年実績-営業経費の前年実績※各列ごとに計算" →これが引き算になっていないので修正
-・雑損失の計算式がなさそう → ✅完了（miscellaneous_loss CTEで実装、ledger_lossから取得）
+・雑損失の計算式がなさそう
 ・glass_interestはどの項目の集計を行っている?
 ============================================================
 */
@@ -40,7 +40,6 @@
 -- パラメータ設定
 -- ============================================================
 DECLARE target_month DATE DEFAULT '2025-09-01';  -- 対象月（前月）
-DECLARE target_month_prev_year DATE DEFAULT DATE_SUB(target_month, INTERVAL 1 YEAR);  -- 前年同月
 DECLARE fiscal_year_start DATE DEFAULT '2025-04-01';  -- 期首（会計年度開始月）
 DECLARE two_months_ago DATE DEFAULT DATE_SUB(target_month, INTERVAL 1 MONTH);  -- 社内利息計算用
 
@@ -94,72 +93,27 @@ WITH sales_actual AS (
 ,
 
 -- ============================================================
--- 1-2. 売上高・粗利実績（前年実績）
--- ============================================================
-sales_actual_prev_year AS (
-  SELECT
-    -- 組織識別
-    CASE
-      WHEN branch_code = 11 THEN '工事営業部'
-      WHEN branch_code = 25 THEN '硝子建材営業部'
-      ELSE 'その他'
-    END AS organization,
-    -- 担当者・部門別分類
-    CASE
-      -- 工事営業部の担当者別
-      WHEN branch_code = 11 AND staff_name = '佐々木' THEN '佐々木（大成・鹿島他）'
-      WHEN branch_code = 11 AND staff_name = '岡本' THEN '岡本（清水他）'
-      WHEN branch_code = 11 AND staff_name = '小笠原' THEN '小笠原（三井住友他）'
-      WHEN branch_code = 11 AND staff_name = '高石' THEN '高石（内装・リニューアル）'
-      WHEN branch_code = 11 AND staff_name = '山本' THEN '山本（改装）'
-      -- 硝子建材営業部の部門別
-      WHEN branch_code = 25 AND division_code = 11 THEN '硝子工事'
-      WHEN branch_code = 25 AND division_code = 21 THEN 'ビルサッシ'
-      WHEN branch_code = 25 AND division_code = 10 THEN '硝子販売'
-      WHEN branch_code = 25 AND division_code = 20 THEN 'サッシ販売'
-      WHEN branch_code = 25 AND division_code = 22 THEN 'サッシ完成品'
-      WHEN branch_code = 25 AND division_code IN (12, 23, 24, 25, 30, 31, 40, 41, 50, 70, 71, 99) THEN 'その他'
-
-      ELSE '未分類'
-    END AS detail_category,
-    -- 金額（円単位）
-    SUM(sales_actual) AS sales_amount,
-    SUM(case when branch_code = 11 then gross_profit_actual else null end) AS gross_profit_amount
-
-  FROM
-    `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
-  WHERE
-    sales_accounting_period = target_month_prev_year  -- 前年同月のデータを取得
-    AND branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
-  GROUP BY
-    organization,
-    detail_category
-)
-,
-
--- ============================================================
--- 2. 売上高・粗利目標
+-- 2. 売上高・粗利目標と前年実績
 -- ============================================================
 profit_plan_data AS (
   SELECT
     period,
     item,  -- 項目（売上高、売上総利益、経常利益）
     -- 各組織の金額を展開（千円→円単位に変換）
-    tokyo_branch_total * 1000 AS tokyo_branch_total,
-    construction_sales_department_total * 1000 AS construction_sales_dept_total,
-    company_sasaki * 1000 AS sasaki_amount,
-    company_asai * 1000 AS asai_amount,
-    company_ogasawara * 1000 AS ogasawara_amount,
-    company_takaishi * 1000 AS takaishi_amount,
-    company_yamamoto * 1000 AS yamamoto_amount,
-    glass_building_material_sales_department * 1000 AS glass_material_dept_total,
-    glass_construction * 1000 AS glass_construction_amount,
-    building_sash * 1000 AS building_sash_amount,
-    glass_sales * 1000 AS glass_sales_amount,
-    sash_sales * 1000 AS sash_sales_amount,
-    sash_finished_products * 1000 AS sash_finished_amount,
-    others * 1000 AS others_amount
-
+    tokyo_branch_total,
+    construction_sales_dept_total,
+    sasaki_amount,
+    asai_amount,
+    ogasawara_amount,
+    takaishi_amount,
+    yamamoto_amount,
+    glass_material_dept_total,
+    glass_construction_amount,
+    building_sash_amount,
+    glass_sales_amount,
+    sash_sales_amount,
+    sash_finished_amount,
+    AS others_amount
   FROM
     `data-platform-prod-475201.corporate_data.profit_plan_term`
   WHERE
@@ -180,6 +134,27 @@ gross_profit_target AS (
   SELECT
     'gross_profit' AS metric_type,
     '本年目標' AS period_type,
+    *
+  FROM profit_plan_data
+  WHERE item = '売上総利益'
+),
+
+-- 前年実績（損益4期実績）
+sales_prev_year AS (
+  SELECT
+    'sales' AS metric_type,
+    '前年実績' AS period_type,
+    *
+  FROM profit_plan_data
+  WHERE item = '売上高'
+  -- 注: 実際には損益4期実績のテーブルから取得する必要があります
+  -- 現状はprofit_plan_termに前年実績も含まれている想定
+),
+
+gross_profit_prev_year AS (
+  SELECT
+    'gross_profit' AS metric_type,
+    '前年実績' AS period_type,
     *
   FROM profit_plan_data
   WHERE item = '売上総利益'
@@ -335,32 +310,7 @@ non_operating_expenses AS (
 ),
 
 -- ============================================================
--- 6. 営業外費用（雑損失）
--- ============================================================
-miscellaneous_loss AS (
-  SELECT
-    -- 部門コードから組織を判定
-    CASE
-      WHEN own_department_code IN (11, 18) THEN 'ガラス工事計'
-      WHEN own_department_code = 13 THEN '山本（改装）'
-      WHEN own_department_code = 20 THEN '硝子建材営業部'
-      ELSE '未分類'
-    END AS detail_category,
-
-    -- 雑損失金額
-    SUM(amount) AS miscellaneous_loss_amount
-
-  FROM
-    `data-platform-prod-475201.corporate_data.ledger_loss`
-  WHERE
-    DATE(slip_date) = target_month
-    AND own_department_code IN (11, 13, 18, 20)
-  GROUP BY
-    detail_category
-),
-
--- ============================================================
--- 7. 本店管理費
+-- 6. 本店管理費
 -- ============================================================
 head_office_expenses AS (
   SELECT
@@ -385,7 +335,7 @@ head_office_expenses AS (
 
 
 -- ============================================================
--- 8. 経常利益目標
+-- 7. 経常利益目標
 -- ============================================================
 recurring_profit_target AS (
   SELECT
@@ -398,7 +348,7 @@ recurring_profit_target AS (
 
 
 -- ============================================================
--- 9. 全指標の統合
+-- 8. 全指標の統合
 -- ============================================================
 consolidated_metrics AS (
   SELECT
@@ -408,17 +358,17 @@ consolidated_metrics AS (
     -- ========== 売上高 ==========
     sa.sales_amount AS sales_actual,  -- 本年実績
     NULL AS sales_target,  -- 本年目標（後で結合）
-    COALESCE(sa_prev.sales_amount, 0) AS sales_prev_year,  -- 前年実績
+    NULL AS sales_prev_year,  -- 前年実績（後で結合）
 
     -- ========== 売上総利益 ==========
     sa.gross_profit_amount AS gross_profit_actual,  -- 本年実績
     NULL AS gross_profit_target,  -- 本年目標
-    COALESCE(sa_prev.gross_profit_amount, 0) AS gross_profit_prev_year,  -- 前年実績
+    NULL AS gross_profit_prev_year,  -- 前年実績
 
     -- ========== 売上総利益率 ==========
     SAFE_DIVIDE(sa.gross_profit_amount, sa.sales_amount) AS gross_profit_margin_actual,
     NULL AS gross_profit_margin_target,
-    SAFE_DIVIDE(sa_prev.gross_profit_amount, sa_prev.sales_amount) AS gross_profit_margin_prev_year,
+    NULL AS gross_profit_margin_prev_year,
 
     -- ========== 営業経費 ==========
     COALESCE(oe.operating_expense_amount, 0) AS operating_expense_actual,
@@ -436,7 +386,6 @@ consolidated_metrics AS (
 
     -- ========== 営業外費用 ==========
     COALESCE(noe.interest_expense, 0) AS non_operating_expenses,
-    COALESCE(ml.miscellaneous_loss_amount, 0) AS miscellaneous_loss,
 
     -- ========== 本店管理費 ==========
     COALESCE(hoe.head_office_expense, 0) AS head_office_expense,
@@ -448,17 +397,12 @@ consolidated_metrics AS (
       + COALESCE(noi.rebate_income, 0)
       + COALESCE(noi.other_non_operating_income, 0)
       - COALESCE(noe.interest_expense, 0)
-      - COALESCE(ml.miscellaneous_loss_amount, 0)
       - COALESCE(hoe.head_office_expense, 0)
     ) AS recurring_profit_actual,
     NULL AS recurring_profit_target
 
   FROM
     sales_actual sa
-  LEFT JOIN
-    sales_actual_prev_year sa_prev
-    ON sa.organization = sa_prev.organization
-    AND sa.detail_category = sa_prev.detail_category
   LEFT JOIN
     operating_expenses oe
     ON sa.detail_category = oe.detail_category
@@ -468,9 +412,6 @@ consolidated_metrics AS (
   LEFT JOIN
     non_operating_expenses noe
     ON sa.detail_category = noe.detail_category
-  LEFT JOIN
-    miscellaneous_loss ml
-    ON sa.detail_category = ml.detail_category
   LEFT JOIN
     head_office_expenses hoe
     ON sa.detail_category = hoe.detail_category
@@ -512,7 +453,6 @@ aggregated_metrics AS (
     SUM(rebate_income) AS rebate_income,
     SUM(other_non_operating_income) AS other_non_operating_income,
     SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
     SUM(head_office_expense) AS head_office_expense,
     SUM(recurring_profit_actual) AS recurring_profit_actual,
     SUM(recurring_profit_target) AS recurring_profit_target
@@ -545,7 +485,6 @@ aggregated_metrics AS (
     SUM(rebate_income) AS rebate_income,
     SUM(other_non_operating_income) AS other_non_operating_income,
     SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
     SUM(head_office_expense) AS head_office_expense,
     SUM(recurring_profit_actual) AS recurring_profit_actual,
     SUM(recurring_profit_target) AS recurring_profit_target
@@ -576,7 +515,6 @@ aggregated_metrics AS (
     SUM(rebate_income) AS rebate_income,
     SUM(other_non_operating_income) AS other_non_operating_income,
     SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
     SUM(head_office_expense) AS head_office_expense,
     SUM(recurring_profit_actual) AS recurring_profit_actual,
     SUM(recurring_profit_target) AS recurring_profit_target
@@ -622,7 +560,6 @@ SELECT
   rebate_income / 1000 AS rebate_income_k,
   other_non_operating_income / 1000 AS other_non_operating_income_k,
   non_operating_expenses / 1000 AS non_operating_expenses_k,
-  miscellaneous_loss / 1000 AS miscellaneous_loss_k,
 
   -- ========== 本店管理費 ==========
   head_office_expense / 1000 AS head_office_expense_k,

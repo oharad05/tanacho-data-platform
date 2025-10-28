@@ -162,21 +162,21 @@ profit_plan_data AS (
   SELECT
     period,
     item,  -- 項目（売上高、売上総利益、経常利益）
-    -- 各組織の金額（既に円単位に変換済み）
-    tokyo_branch_total AS tokyo_branch_total,
-    construction_sales_department_total AS construction_sales_dept_total,
-    company_sasaki AS sasaki_amount,
-    company_asai AS asai_amount,
-    company_ogasawara AS ogasawara_amount,
-    company_takaishi AS takaishi_amount,
-    company_yamamoto AS yamamoto_amount,
-    glass_building_material_sales_department AS glass_material_dept_total,
-    glass_construction AS glass_construction_amount,
-    building_sash AS building_sash_amount,
-    glass_sales AS glass_sales_amount,
-    sash_sales AS sash_sales_amount,
-    sash_finished_products AS sash_finished_amount,
-    others AS others_amount
+    -- 各組織の金額を展開（千円→円単位に変換）
+    tokyo_branch_total * 1000 AS tokyo_branch_total,
+    construction_sales_department_total * 1000 AS construction_sales_dept_total,
+    company_sasaki * 1000 AS sasaki_amount,
+    company_asai * 1000 AS asai_amount,
+    company_ogasawara * 1000 AS ogasawara_amount,
+    company_takaishi * 1000 AS takaishi_amount,
+    company_yamamoto * 1000 AS yamamoto_amount,
+    glass_building_material_sales_department * 1000 AS glass_material_dept_total,
+    glass_construction * 1000 AS glass_construction_amount,
+    building_sash * 1000 AS building_sash_amount,
+    glass_sales * 1000 AS glass_sales_amount,
+    sash_sales * 1000 AS sash_sales_amount,
+    sash_finished_products * 1000 AS sash_finished_amount,
+    others * 1000 AS others_amount
 
   FROM
     `data-platform-prod-475201.corporate_data.profit_plan_term`

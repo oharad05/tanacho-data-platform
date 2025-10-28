@@ -50,6 +50,18 @@ TABLE_CONFIG = {
     "ledger_loss": {
         "partition_field": "slip_date",  # DATE(slip_date)でパーティション
         "clustering_fields": ["classification_type"]
+    },
+    "stocks": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "ms_allocation_ratio": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "ms_department_category": {
+        "partition_field": None,  # マスターテーブルなのでパーティション不要
+        "clustering_fields": ["department_category_code"]
     }
 }
 

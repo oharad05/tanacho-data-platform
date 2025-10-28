@@ -51,8 +51,15 @@ BigQuery (パーティション化テーブル)
 ## ディレクトリ構成
 
 ```
-├── columns/              # カラムマッピング定義（日本語→英語）
-├── mapping/              # ファイル名マッピング
+├── mapping/              # 設定ファイル（Git管理対象、GCSと同期）
+│   ├── mapping_files.csv         # ファイル名マッピング（日本語→英語）
+│   ├── monetary_scale_conversion.csv # 金額単位変換設定
+│   └── columns/                   # カラム定義ファイル
+│       ├── stocks.csv
+│       ├── ms_allocation_ratio.csv
+│       ├── ms_department_category.csv
+│       └── ... (他のテーブル定義)
+├── columns/              # カラムマッピング定義（ローカル実行用）
 ├── run_service/          # Cloud Run用サービス
 ├── function/             # Cloud Functions用（旧版）
 ├── sync_drive_to_gcs.py  # Drive → GCS連携
@@ -184,8 +191,36 @@ bq ls --project_id=data-platform-prod-475201 corporate_data
   - 各担当者別（佐々木、浅井、小笠原、高石、山本など）
   - 各事業区分別（硝子工事、硝子販売、サッシ販売など）
 
+### 8. stocks (在庫)
+- **目的**: 支店・部署別の在庫データを管理
+- **パーティション**: `year_month` (年月、DATE型)
+- **クラスタリング**: `branch` (支店)
+- **主要カラム**:
+  - 支店、部署、種別（期末未成工事、当月在庫など）
+  - 金額、年月
+
+### 9. ms_allocation_ratio (案分比率マスタ)
+- **目的**: 支店・部署別の案分比率を管理（マスタテーブル）
+- **パーティション**: なし（マスタテーブルのためパーティション化不要）
+- **クラスタリング**: `branch` (支店)
+- **主要カラム**:
+  - 支店、部署、種別（業務部門案分など）
+  - 比率、年月（DATE型）
+
+### 10. ms_department_category (部門カテゴリマスタ)
+- **目的**: 部門カテゴリコードと名称の対照表（マスタテーブル）
+- **パーティション**: なし（マスタテーブルのためパーティション化不要）
+- **クラスタリング**: `department_category_code` (部門カテゴリコード、INTEGER型)
+- **主要カラム**:
+  - 部門カテゴリコード（INTEGER型: 0, 10, 11, 13, 18, 20...）
+  - 部門カテゴリコード名（本店、工事営業１課、改修課、硝子建材営業課など）
+
 ### データ設計方針
-- 全テーブルは月次でパーティショニングされており、効率的なクエリ実行が可能
+- **パーティション化ルール**:
+  - **トランザクションテーブル**: 日付カラムでパーティション化（月次パーティション）
+  - **マスタテーブル**: パーティション化不要
+    - `ms_` プレフィックスがついているテーブルはマスタテーブルとして扱う
+    - 例: `ms_allocation_ratio`, `ms_department_category`
 - カラムマッピング定義は `columns/` ディレクトリ配下のCSVファイルで管理
 - 日本語カラム名から英語カラム名への変換は自動化
 
@@ -205,20 +240,26 @@ bq ls --project_id=data-platform-prod-475201 corporate_data
 pip install google-cloud-storage pandas openpyxl google-api-python-client google-cloud-bigquery
 ```
 
-## 実装状況 (2025-10-24)
+## 実装状況 (2025-10-28)
 
 ### 完了済み
-- ✅ Google Drive → GCS (raw/) 連携: 7ファイル同期成功
-- ✅ Excel → CSV変換 (raw/ → proceed/): 7ファイル変換成功
-- ✅ BigQuery連携: 5/7テーブルロード成功
-  - sales_target_and_achievements (790行)
-  - billing_balance (1,020行)
-  - ledger_income (63行)
-  - department_summary (339行)
-  - ledger_loss (6行)
+- ✅ Google Drive → GCS (raw/) 連携: 10ファイル同期成功
+- ✅ Excel → CSV変換 (raw/ → proceed/): 10ファイル変換成功
+- ✅ BigQuery連携: 10テーブルロード成功
+  - sales_target_and_achievements (395行)
+  - billing_balance (478,880行)
+  - ledger_income (91,035行)
+  - department_summary (226行)
+  - internal_interest (82行)
+  - profit_plan_term (248,886行)
+  - ledger_loss (8,670行)
+  - **stocks (4行)** ← 新規追加
+  - **ms_allocation_ratio (132行)** ← 新規追加
+  - **ms_department_category (27行)** ← 新規追加
 
-### 対応中の課題
-- ⚠️ internal_interest: 日付フォーマット変換エラー
-- ⚠️ profit_plan_term: 日付フォーマット変換エラー
-  - 原因: datetime64型の値が正しく文字列に変換されていない
-  - 対応予定: transform_raw_to_proceed.pyの日付変換処理改善
+### 設定ファイル管理
+- ✅ `mapping/` ディレクトリをGit管理対象として確立
+  - `mapping/mapping_files.csv`: ファイル名マッピング（日本語→英語）
+  - `mapping/columns/*.csv`: カラム定義ファイル（日本語→英語、型定義、説明）
+  - `mapping/monetary_scale_conversion.csv`: 金額単位変換設定
+- ✅ GCSとの同期: `mapping/` → `gs://data-platform-landing-prod/config/`
