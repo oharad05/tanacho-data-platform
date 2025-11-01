@@ -932,3 +932,534 @@ SUM(0 + 0 + 0 + 0) = すべての経費項目が0
 この2つを直接JOINすることはできないため、「山本（改装）」以外は全てNULLとなり、結果として0になります。
 
 ---
+
+## Version 4: データマート可視化でゼロになる項目の根本原因調査（2025-10-29）
+
+### 調査依頼
+
+`datamart_management_report_vertical.sql` で作成したデータマートを可視化したところ、以下の5項目が依然としてゼロになっている原因を調査し、詳細に言語化する：
+- 営業外収入（リベート）
+- 営業外収入（その他）
+- 営業外費用（社内利息A・B）
+- 営業外費用（雑損失）
+- 本店管理費
+
+### 調査方法
+
+1. DWHテーブル（`corporate_data_dwh.*`）のデータ存在確認
+2. ソーステーブル（`corporate_data.*`）のデータ存在確認
+3. sql/split_dwh_dm/ 配下のクエリと実データの照合
+4. 仕様書（sql/README.md, transformation_proposal.md）との整合性確認
+
+### 調査結果サマリー
+
+| 項目 | DWH状態 | 根本原因 | 優先度 |
+|------|---------|----------|--------|
+| 営業外収入（リベート） | NULL | ソーステーブル `ledger_income` に 2025-09-01 のデータが存在しない | 高 |
+| 営業外収入（その他） | NULL | 同上 | 高 |
+| 営業外費用（社内利息A・B） | 一部のみ値あり | `internal_interest.category` の値が仕様と不一致 + 山本（改装）データ欠落 | 緊急 |
+| 営業外費用（雑損失） | NULL | ソーステーブル `ledger_loss` のデータが5月で停止 | 緊急 |
+| 本店管理費 | **正常に値あり** | DWHは正常、山本（改装）の行が最終出力に存在しない（sales_actual欠落が原因） | 緊急 |
+
+### 項目別の詳細分析
+
+---
+
+#### 1. 営業外収入（リベート）・営業外収入（その他）
+
+**DWHテーブルの状態:**
+```
+data-platform-prod-475201.corporate_data_dwh.non_operating_income:
+  year_month    | detail_category  | rebate_income | other_non_operating_income
+  2025-09-01    | 硝子建材営業部    | NULL          | NULL
+  2025-09-01    | 山本（改装）      | NULL          | NULL
+  2025-09-01    | ガラス工事計      | NULL          | NULL
+```
+
+**根本原因:**
+
+ソーステーブル `corporate_data.ledger_income` に **2025-09-01 のデータが存在しない**
+
+**データ存在確認:**
+```sql
+-- ledger_incomeの日付範囲
+SELECT MIN(slip_date), MAX(slip_date), COUNT(*)
+FROM `data-platform-prod-475201.corporate_data.ledger_income`
+
+結果:
+  最小日付: 2025-09-03
+  最大日付: 2025-09-30
+  2025-09-01のレコード数: 0件
+```
+
+**SQLの実装:**
+`sql/split_dwh_dm/dwh_non_operating_income.sql:68`
+```sql
+WHERE DATE(slip_date) = DATE('2025-09-01')
+```
+
+この条件に該当するレコードが存在しないため、全てのdetail_categoryでNULLになっています。
+
+**仕様書との関係:**
+- sql/README.md:89-93 には営業外収入のソースとして `ledger_income` を使用することが記載
+- DWHクエリのロジック自体は正しく実装されている
+
+---
+
+#### 2. 営業外費用（社内利息A・B）
+
+**DWHテーブルの状態:**
+```
+data-platform-prod-475201.corporate_data_dwh.non_operating_expenses:
+  year_month    | detail_category  | interest_expense
+  2025-09-01    | 硝子建材営業部    | 2,081,087円 ✅
+  2025-09-01    | ガラス工事計      | 5,066,451円 ✅
+  (山本（改装）のデータなし) ❌
+```
+
+**根本原因:**
+
+`internal_interest` テーブルの **`category` カラムの値が仕様と不一致**
+
+**データ存在確認:**
+```sql
+-- internal_interestのcategory値
+SELECT DISTINCT year_month, branch, category
+FROM `data-platform-prod-475201.corporate_data.internal_interest`
+WHERE year_month = DATE('2025-08-01')  -- 2か月前
+
+結果:
+  category の実際の値:
+    - '社内利息（A）'
+    - '社内利息（B）'
+    - '減価償却費'
+    - '本店管理費'
+    - '貸倒損失'
+    - '退職金'
+
+  期待値（SQLの条件）:
+    - '売掛金'  ← 存在しない！
+```
+
+**SQLの実装:**
+`sql/split_dwh_dm/dwh_non_operating_expenses.sql:23-40`
+```sql
+yamamoto_interest AS (
+  SELECT
+    '山本（改装）' AS detail_category,
+    bb.current_month_sales_balance * ii.interest_rate AS interest_expense
+  FROM
+    `data-platform-prod-475201.corporate_data.billing_balance` AS bb
+  INNER JOIN
+    `data-platform-prod-475201.corporate_data.internal_interest` AS ii
+    ON bb.sales_month = ii.year_month
+  WHERE
+    bb.sales_month = DATE('2025-08-01')
+    AND bb.branch_code = 13
+    AND ii.year_month = DATE('2025-08-01')
+    AND ii.branch = '東京支店'
+    AND ii.category = '売掛金'  ← ★ここが問題★
+  LIMIT 1
+),
+```
+
+**検証結果:**
+- `billing_balance` の該当データ: 存在する（2460件中に含まれる）
+- `internal_interest` の 2025-08-01 データ: 存在する
+- しかし、`category = '売掛金'` に該当するレコードが0件
+
+このため、INNER JOINが失敗し、yamamoto_interest CTEが空になり、最終的に山本（改装）のデータが出力されません。
+
+**補足:** 山本（改装）が最終出力に表示されない根本原因は、後述する「sales_actual DWH に山本（改装）のデータが存在しない」問題が主因です。
+
+---
+
+#### 3. 営業外費用（雑損失）
+
+**DWHテーブルの状態:**
+```
+data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss:
+  year_month    | detail_category       | miscellaneous_loss_amount
+  2025-09-01    | ガラス工事計          | NULL
+  2025-09-01    | 山本（改装）          | NULL
+  2025-09-01    | 硝子建材営業部        | NULL
+```
+
+**根本原因:**
+
+ソーステーブル `corporate_data.ledger_loss` に **2025-09-01 のデータが存在しない**
+
+**データ存在確認:**
+```sql
+-- ledger_lossの日付範囲
+SELECT MIN(slip_date), MAX(slip_date), COUNT(*)
+FROM `data-platform-prod-475201.corporate_data.ledger_loss`
+
+結果:
+  最小日付: 2025-04-15
+  最大日付: 2025-05-29  ← 5月で停止
+  2025-09-01のレコード数: 0件
+```
+
+**SQLの実装:**
+`sql/split_dwh_dm/dwh_miscellaneous_loss.sql:43`
+```sql
+WHERE DATE(slip_date) = DATE('2025-09-01')
+```
+
+**重要な発見:**
+データ連携が **5月29日で停止している** ことから、以下の可能性が高い：
+1. Google Drive → GCS へのデータ同期が停止
+2. GCS → BigQuery へのロード処理が停止
+3. 元データ（Excel/CSV）自体が更新されていない
+
+雑損失は毎月発生するとは限らない項目ですが、このケースでは **データパイプライン全体の問題** と推測されます。
+
+---
+
+#### 4. 本店管理費
+
+**DWHテーブルの状態:**
+```
+data-platform-prod-475201.corporate_data_dwh.head_office_expenses:
+  year_month    | detail_category  | head_office_expense
+  2025-09-01    | 硝子建材営業部    | 1,952,000円 ✅
+  2025-09-01    | 山本（改装）      | 790,000円 ✅
+  2025-09-01    | ガラス工事計      | 3,264,000円 ✅
+```
+
+**expense_data CTEの状態:**
+```
+detail_category   | hq_expense
+硝子建材営業部     | 1,952,000円 ✅
+山本（改装）       | 790,000円 ✅
+ガラス工事計       | 3,264,000円 ✅
+```
+
+**最終出力（management_documents_current_month_tbl）の状態:**
+```
+secondary_department     | main_category | value
+東京支店計               | 本店管理費    | 66,066,000円 ✅
+工事営業部計             | 本店管理費    | 20,270,000円 ✅
+ガラス工事計             | 本店管理費    | 3,264,000円 ✅
+硝子建材営業部計         | 本店管理費    | 1,952,000円 ✅
+山本（改装）             | 本店管理費    | (行自体が存在しない) ❌
+```
+
+**結論:**
+
+**本店管理費自体は正常に計算されています。**
+
+ユーザーが「本店管理費がゼロ」と認識した原因は、**山本（改装）の行が最終出力に存在しない**ためと推測されます。
+
+山本（改装）の行が存在しない根本原因は、次の項目5で詳述します。
+
+---
+
+#### 5. 【最重要】山本（改装）データ欠落問題
+
+**問題の発見:**
+
+`corporate_data_dwh.sales_actual` テーブルに **山本（改装）のレコードが存在しない**
+
+**データ存在確認:**
+```sql
+-- sales_actual DWHのdetail_category一覧
+SELECT DISTINCT organization, detail_category
+FROM `data-platform-prod-475201.corporate_data_dwh.sales_actual`
+
+結果:
+  工事営業部:
+    - 佐々木（大成・鹿島他）
+    - 岡本（清水他）
+    - 小笠原（三井住友他）
+    - 高石（内装・リニューアル）
+    - 未分類
+  硝子建材営業部:
+    - 硝子工事、ビルサッシ、硝子販売、サッシ販売、サッシ完成品、その他
+
+  山本（改装） ← 存在しない！
+```
+
+**根本原因:**
+
+ソーステーブル `corporate_data.sales_target_and_achievements` に **「山本」という担当者名のレコードが存在しない**
+
+**データ存在確認:**
+```sql
+-- 工事営業部の担当者名一覧
+SELECT DISTINCT staff_code, staff_name
+FROM `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
+WHERE sales_accounting_period = DATE('2025-09-01')
+  AND branch_code = 11
+
+結果:
+  staff_code | staff_name
+  119        | 佐々木康裕
+  140        | 岡本一郎
+  121        | 小笠原洋介
+  151        | 高石麻友子
+  122        | 浅井一作
+  110        | 工事営業部
+
+  「山本」← 存在しない！
+```
+
+**SQLの実装:**
+`sql/split_dwh_dm/dwh_sales_actual.sql:27-33`
+```sql
+CASE
+  -- 工事営業部の担当者別
+  WHEN branch_code = 11 AND staff_name = '佐々木康裕' THEN '佐々木（大成・鹿島他）'
+  WHEN branch_code = 11 AND staff_name = '岡本一郎' THEN '岡本（清水他）'
+  WHEN branch_code = 11 AND staff_name = '小笠原洋介' THEN '小笠原（三井住友他）'
+  WHEN branch_code = 11 AND staff_name = '高石麻友子' THEN '高石（内装・リニューアル）'
+  WHEN branch_code = 11 AND staff_name = '山本' THEN '山本（改装）'  ← この条件に該当するレコードが0件
+```
+
+**影響範囲:**
+
+datamart_management_report_vertical.sql の構造:
+1. `consolidated_metrics` CTE で sales_actual を基準に各経費データを LEFT JOIN
+2. sales_actual に山本（改装）がない
+   ↓
+3. consolidated_metrics にも山本（改装）の行が作成されない
+   ↓
+4. aggregated_metrics で「ガラス工事計」を計算する際も山本のデータが参照されない
+   ↓
+5. vertical_format で縦持ちに変換する際、山本（改装）の行が一切出現しない
+
+**結果:**
+- 山本（改装）の売上・粗利データが最終出力に表示されない
+- 山本（改装）の本店管理費（790,000円）が表示されない
+- 山本（改装）の営業経費（2,587,925円）が表示されない
+- 工事営業部計の経費集計に影響する可能性がある
+
+**仕様書との関係:**
+- sql/README.md:108-112 には「山本（改装）」が組織階層に記載されている
+- しかし、実際のソーステーブルには該当するデータが存在しない
+
+---
+
+### データ整合性の確認結果
+
+**正常に動作している項目:**
+- 営業経費（DWHテーブルに正しく値が入っている）
+- 本店管理費（DWHテーブルに正しく値が入っている）
+- 営業外費用・社内利息（ガラス工事計・硝子建材営業部は正常）
+
+**問題がある項目:**
+| 項目 | 問題レベル | 原因カテゴリ |
+|------|-----------|-------------|
+| 営業外収入 | データ不足 | ソーステーブルの日付不一致 |
+| 営業外費用（雑損失） | データパイプライン停止 | データ連携の停止（5月で停止） |
+| 営業外費用（社内利息・山本分） | スキーマ不一致 | category値の不一致 |
+| 山本（改装）全般 | データ欠落 | ソーステーブルに担当者データが存在しない |
+
+---
+
+### 対策の提案
+
+#### 優先度1（緊急対応必要）
+
+**対策1-1: ledger_loss のデータ連携復旧**
+
+**問題:** データが5月29日で停止している
+
+**アクション:**
+1. Google Drive 上の元データ（Excel/CSV）を確認
+   - 6月以降のデータが存在するか
+2. `sync_drive_to_gcs.py` のログを確認
+   - 同期処理が正常に実行されているか
+3. `load_to_bigquery.py` のログを確認
+   - BigQueryへのロードが成功しているか
+4. 必要に応じて手動でデータ連携を実行
+
+**期待効果:** 雑損失データが正しく取得できるようになる
+
+---
+
+**対策1-2: 山本（改装）のデータ確認と追加**
+
+**問題:** sales_target_and_achievements に山本さんのデータが存在しない
+
+**アクション:**
+1. 元データ（Excel）を確認し、山本さんのデータが存在するか調査
+2. 山本さんのデータが別の staff_name で登録されていないか確認
+   - 例: 「山本太郎」「山本 改装」「改装課」など
+3. 山本（改装）が担当者名ではなく、部門として扱われている可能性を調査
+   - department_code または division_code で識別できるか確認
+
+**SQL修正案（暫定対応）:**
+
+案A: 部分一致検索
+```sql
+-- dwh_sales_actual.sql:33
+WHEN branch_code = 11 AND staff_name LIKE '山本%' THEN '山本（改装）'
+```
+
+案B: department_code を使用（改修課を示すコードが 13 の場合）
+```sql
+WHEN branch_code = 11 AND department_code = 13 THEN '山本（改装）'
+```
+
+案C: 経費のみの行を追加（応急処置・非推奨）
+```sql
+-- sales_actual DWHに経費表示用のダミー行を追加
+SELECT DATE('2025-09-01'), '工事営業部', '山本（改装）', 0, 0
+```
+
+**期待効果:** 山本（改装）の行が最終出力に表示され、経費データも正しく表示される
+
+---
+
+#### 優先度2（短期対応）
+
+**対策2-1: 営業外収入の日付条件変更**
+
+**問題:** ledger_income に 2025-09-01 のデータが存在しない（最小日付: 2025-09-03）
+
+**SQL修正案:**
+```sql
+-- dwh_non_operating_income.sql:68
+-- 変更前
+WHERE DATE(slip_date) = DATE('2025-09-01')
+
+-- 変更後（案1）: 9月全体を集計
+WHERE DATE_TRUNC(DATE(slip_date), MONTH) = DATE('2025-09-01')
+
+-- 変更後（案2）: 9月の最初の営業日を動的に取得
+WHERE DATE(slip_date) = (
+  SELECT MIN(DATE(slip_date))
+  FROM `data-platform-prod-475201.corporate_data.ledger_income`
+  WHERE DATE_TRUNC(DATE(slip_date), MONTH) = DATE('2025-09-01')
+)
+```
+
+**メリット:** すぐに実装可能、9月のリベート収入を取得できる
+**デメリット:** 月の途中データも含まれるため、締め日の概念と合わない可能性
+
+**期待効果:** 営業外収入（リベート・その他）が表示されるようになる
+
+---
+
+**対策2-2: 営業外費用（雑損失）の日付条件変更**
+
+営業外収入と同様に、月全体を集計するよう変更：
+
+```sql
+-- dwh_miscellaneous_loss.sql:43
+WHERE DATE_TRUNC(DATE(slip_date), MONTH) = DATE('2025-09-01')
+```
+
+**注意:** 現状では9月のデータが1件も存在しないため、対策1-1（データ連携復旧）が完了しない限り効果はありません。
+
+---
+
+**対策2-3: 社内利息の category 条件修正**
+
+**問題:** internal_interest.category の値が '売掛金' ではなく '社内利息（A）'/'社内利息（B）' になっている
+
+**SQL修正案:**
+```sql
+-- dwh_non_operating_expenses.sql:38
+-- 変更前
+AND ii.category = '売掛金'
+
+-- 変更後（案1）: 社内利息（A）を使用
+AND ii.category = '社内利息（A）'
+
+-- 変更後（案2）: 両方を考慮
+AND ii.category IN ('社内利息（A）', '社内利息（B）')
+```
+
+**注意:** この変更には慎重な検討が必要
+- 「社内利息（A）」と「（B）」の違いを確認
+- interest_rate カラムの意味を確認
+- 仕様書の「売掛金利率」の定義を明確化
+
+**アクション:**
+1. internal_interest テーブルのスキーマを確認
+2. 元データ（Excel）での category の定義を確認
+3. ETL処理（transform_raw_to_proceed.py）での変換ルールを確認
+4. 仕様書（元のExcel）の #7 社内金利計算表 シートを確認
+
+**期待効果:** 山本（改装）の社内利息が計算できるようになる（ただし、対策1-2も必要）
+
+---
+
+#### 優先度3（中長期対応）
+
+**対策3-1: データパイプライン全体の健全性チェック**
+
+**アクション:**
+1. 全テーブルの最新データ日付を確認
+2. GCS バケット内のファイル一覧と更新日時を確認
+3. Cloud Run/Cloud Functions のログを確認
+4. スケジューラの設定を確認
+
+**期待効果:** データ連携の問題を早期発見できる体制を構築
+
+---
+
+**対策3-2: テーブルスキーマのドキュメント化**
+
+**アクション:**
+1. 各テーブルの全カラムの意味を文書化
+2. category, detail_category, code などの列挙値を一覧化
+3. ETL処理でのデータ変換ルールを文書化
+4. 仕様書とテーブル構造の対応表を作成
+
+**期待効果:** 今後の開発・保守が容易になる
+
+---
+
+**対策3-3: 仕様書とデータ構造の整合性確認**
+
+**アクション:**
+1. 元の仕様書（Excel）と実際のテーブル構造を比較
+2. 不一致がある場合は、どちらを正とするか決定
+3. 仕様書またはテーブル構造を修正
+
+**期待効果:** 仕様書と実装の乖離を解消
+
+---
+
+### まとめ
+
+**判明した3つの根本原因:**
+
+1. **データ連携の問題**
+   - ledger_income: 月初（1日）のデータが存在しない
+   - ledger_loss: 5月29日でデータが停止している
+
+2. **スキーマの不一致**
+   - internal_interest.category の値が仕様書の記載と異なる
+
+3. **ソースデータの欠落**
+   - sales_target_and_achievements に山本さんのデータが存在しない
+
+**影響を受けている項目:**
+- 営業外収入（リベート）: データ連携の問題
+- 営業外収入（その他）: データ連携の問題
+- 営業外費用（社内利息）: スキーマ不一致 + ソースデータ欠落
+- 営業外費用（雑損失）: データ連携の停止
+- 本店管理費（山本のみ）: ソースデータ欠落
+
+**正常に動作している部分:**
+- 本店管理費（ガラス工事計・硝子建材営業部）: ✅
+- 営業経費: ✅
+- 営業外費用・社内利息（ガラス工事計・硝子建材営業部）: ✅
+- 売上高・売上総利益・売上総利益率: ✅
+
+**次のステップ:**
+1. **即時実施**: データ連携の確認（ledger_loss が5月で停止）
+2. **即時実施**: 山本（改装）のデータ確認
+3. **短期実施**: 日付条件の変更（月全体集計）
+4. **短期実施**: internal_interest の category 調査・修正
+
+**調査完了日:** 2025-10-29
+
+**状態:** 🔍 調査完了・対策提案済み
+
+---

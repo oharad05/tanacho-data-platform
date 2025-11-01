@@ -22,9 +22,9 @@ from google.cloud.exceptions import GoogleCloudError
 PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
-COLUMNS_PATH = "columns"
-MAPPING_FILE = "mapping/excel_mapping.csv"
-MONETARY_SCALE_FILE = "mapping/monetary_scale_conversion.csv"
+COLUMNS_PATH = "config/columns"
+MAPPING_FILE = "config/mapping/excel_mapping.csv"
+MONETARY_SCALE_FILE = "config/mapping/monetary_scale_conversion.csv"
 
 # テーブル定義
 TABLE_CONFIG = {

@@ -71,7 +71,7 @@ WITH sales_actual AS (
       WHEN branch_code = 11 AND staff_name = '高石麻友子' THEN '高石（内装・リニューアル）'
       WHEN branch_code = 11 AND staff_name = '山本' THEN '山本（改装）'
     --要確認: 売上高と純利益の人の対応表が異なるが､それは意図通りでしょうか?今後人の入れ替えがある可能性がある場合､case whenで振り分けるのではなく管理表を作った方が良いと思います｡
-      # 要確認(下記のsqlで実行すると山本さんはいないが､浅井さんはいる｡該当者がいない場合は､その他に計上するか､集計対象から外すかどうしますか?現状集計対象から外すしています｡)
+      # 要確認(下記のsqlで実行すると山本さんはいないが､浅井さんはいる｡該当者がいない場合は､その他に計上するか､集計対象から外すかどうしますか?現状集計対象から外すしています｡また､山本(改装)がないため､営業経費とも紐づかなくなっております)
       /*
       select
         branch_code, staff_name, count(*)
@@ -84,6 +84,10 @@ WITH sales_actual AS (
         order by
           1,2
       */
+      --メモ: 営業経費と紐づかない問題について､
+      --sales_actualの担当者が佐々木康裕・高石麻友子の場合: ガラス工事計の-- 担当者・部門別分類のタイプに追加する
+      -- 山本(改装)は現状山本の担当者がいないため紐づかない
+      -- 硝子建材営業部
       WHEN branch_code = 25 AND division_code = 11 THEN '硝子工事'
       WHEN branch_code = 25 AND division_code = 21 THEN 'ビルサッシ'
       WHEN branch_code = 25 AND division_code = 10 THEN '硝子販売'
@@ -570,6 +574,25 @@ consolidated_metrics AS (
     ON sa.detail_category = hoe.detail_category
 ),
 
+-- ============================================================
+-- 9-2. 経費データの事前集計（集計グループレベル）
+-- ============================================================
+-- 各経費CTEを統合して1つのテーブルに
+expense_data AS (
+  SELECT
+    oe.detail_category,
+    oe.operating_expense_amount AS operating_expense,
+    noi.rebate_income,
+    noi.other_non_operating_income AS other_income,
+    noe.interest_expense,
+    ml.miscellaneous_loss_amount AS misc_loss,
+    hoe.head_office_expense AS hq_expense
+  FROM operating_expenses oe
+  LEFT JOIN non_operating_income noi ON oe.detail_category = noi.detail_category
+  LEFT JOIN non_operating_expenses noe ON oe.detail_category = noe.detail_category
+  LEFT JOIN miscellaneous_loss ml ON oe.detail_category = ml.detail_category
+  LEFT JOIN head_office_expenses hoe ON oe.detail_category = hoe.detail_category
+),
 
 -- ============================================================
 -- 10. 組織階層の集計（工事営業部計、東京支店計）
@@ -583,65 +606,137 @@ aggregated_metrics AS (
 
   -- 中間レベル（ガラス工事計 = 佐々木+岡本+小笠原+高石）
   SELECT
-    organization,
+    cm.organization,
     'ガラス工事計' AS detail_category,
-    SUM(sales_actual) AS sales_actual,
-    SUM(sales_target) AS sales_target,
-    SUM(sales_prev_year) AS sales_prev_year,
-    SUM(gross_profit_actual) AS gross_profit_actual,
-    SUM(gross_profit_target) AS gross_profit_target,
-    SUM(gross_profit_prev_year) AS gross_profit_prev_year,
-    SAFE_DIVIDE(SUM(gross_profit_actual), SUM(sales_actual)) AS gross_profit_margin_actual,
-    SAFE_DIVIDE(SUM(gross_profit_target), SUM(sales_target)) AS gross_profit_margin_target,
-    SAFE_DIVIDE(SUM(gross_profit_prev_year), SUM(sales_prev_year)) AS gross_profit_margin_prev_year,
-    SUM(operating_expense_actual) AS operating_expense_actual,
-    SUM(operating_expense_target) AS operating_expense_target,
-    SUM(operating_expense_prev_year) AS operating_expense_prev_year,
-    SUM(operating_income_actual) AS operating_income_actual,
-    SUM(operating_income_target) AS operating_income_target,
-    SUM(operating_income_prev_year) AS operating_income_prev_year,
-    SUM(rebate_income) AS rebate_income,
-    SUM(other_non_operating_income) AS other_non_operating_income,
-    SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
-    SUM(head_office_expense) AS head_office_expense,
-    SUM(recurring_profit_actual) AS recurring_profit_actual,
-    SUM(recurring_profit_target) AS recurring_profit_target
-  FROM consolidated_metrics
-  WHERE organization = '工事営業部'
-    AND detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）')
-  GROUP BY organization
+    -- ========== 売上・粗利は個人データを集計 ==========
+    SUM(cm.sales_actual) AS sales_actual,
+    SUM(cm.sales_target) AS sales_target,
+    SUM(cm.sales_prev_year) AS sales_prev_year,
+    SUM(cm.gross_profit_actual) AS gross_profit_actual,
+    SUM(cm.gross_profit_target) AS gross_profit_target,
+    SUM(cm.gross_profit_prev_year) AS gross_profit_prev_year,
+    SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
+    SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
+    -- ========== 経費はexpense_dataから直接取得 ==========
+    MAX(ed.operating_expense) AS operating_expense_actual,
+    CAST(NULL AS FLOAT64) AS operating_expense_target,
+    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    -- 営業利益の再計算
+    SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
+    CAST(NULL AS FLOAT64) AS operating_income_target,
+    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    -- 営業外収入
+    MAX(ed.rebate_income) AS rebate_income,
+    MAX(ed.other_income) AS other_non_operating_income,
+    -- 営業外費用
+    MAX(ed.interest_expense) AS non_operating_expenses,
+    MAX(ed.misc_loss) AS miscellaneous_loss,
+    -- 本店管理費
+    MAX(ed.hq_expense) AS head_office_expense,
+    -- 経常利益の再計算
+    (
+      SUM(cm.gross_profit_actual)
+      - COALESCE(MAX(ed.operating_expense), 0)
+      + COALESCE(MAX(ed.rebate_income), 0)
+      + COALESCE(MAX(ed.other_income), 0)
+      - COALESCE(MAX(ed.interest_expense), 0)
+      - COALESCE(MAX(ed.misc_loss), 0)
+      - COALESCE(MAX(ed.hq_expense), 0)
+    ) AS recurring_profit_actual,
+    CAST(NULL AS FLOAT64) AS recurring_profit_target
+  FROM consolidated_metrics cm
+  CROSS JOIN (SELECT * FROM expense_data WHERE detail_category = 'ガラス工事計') ed
+  WHERE cm.organization = '工事営業部'
+    AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）')
+  GROUP BY cm.organization
 
   UNION ALL
 
-  -- 組織計レベル（工事営業部計、硝子建材営業部計）
+  -- 組織計レベル（工事営業部計）
   SELECT
-    organization,
-    CONCAT(organization, '計') AS detail_category,
-    SUM(sales_actual) AS sales_actual,
-    SUM(sales_target) AS sales_target,
-    SUM(sales_prev_year) AS sales_prev_year,
-    SUM(gross_profit_actual) AS gross_profit_actual,
-    SUM(gross_profit_target) AS gross_profit_target,
-    SUM(gross_profit_prev_year) AS gross_profit_prev_year,
-    SAFE_DIVIDE(SUM(gross_profit_actual), SUM(sales_actual)) AS gross_profit_margin_actual,
-    SAFE_DIVIDE(SUM(gross_profit_target), SUM(sales_target)) AS gross_profit_margin_target,
-    SAFE_DIVIDE(SUM(gross_profit_prev_year), SUM(sales_prev_year)) AS gross_profit_margin_prev_year,
-    SUM(operating_expense_actual) AS operating_expense_actual,
-    SUM(operating_expense_target) AS operating_expense_target,
-    SUM(operating_expense_prev_year) AS operating_expense_prev_year,
-    SUM(operating_income_actual) AS operating_income_actual,
-    SUM(operating_income_target) AS operating_income_target,
-    SUM(operating_income_prev_year) AS operating_income_prev_year,
-    SUM(rebate_income) AS rebate_income,
-    SUM(other_non_operating_income) AS other_non_operating_income,
-    SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
-    SUM(head_office_expense) AS head_office_expense,
-    SUM(recurring_profit_actual) AS recurring_profit_actual,
-    SUM(recurring_profit_target) AS recurring_profit_target
-  FROM consolidated_metrics
-  GROUP BY organization
+    cm.organization,
+    CONCAT(cm.organization, '計') AS detail_category,
+    -- ========== 売上・粗利は個人/部門データを集計 ==========
+    SUM(cm.sales_actual) AS sales_actual,
+    SUM(cm.sales_target) AS sales_target,
+    SUM(cm.sales_prev_year) AS sales_prev_year,
+    SUM(cm.gross_profit_actual) AS gross_profit_actual,
+    SUM(cm.gross_profit_target) AS gross_profit_target,
+    SUM(cm.gross_profit_prev_year) AS gross_profit_prev_year,
+    SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
+    SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
+    -- ========== 経費はexpense_dataから集計（ガラス工事計 + 山本（改装）） ==========
+    SUM(COALESCE(ed.operating_expense, 0)) AS operating_expense_actual,
+    CAST(NULL AS FLOAT64) AS operating_expense_target,
+    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    SUM(cm.gross_profit_actual) - SUM(COALESCE(ed.operating_expense, 0)) AS operating_income_actual,
+    CAST(NULL AS FLOAT64) AS operating_income_target,
+    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(COALESCE(ed.rebate_income, 0)) AS rebate_income,
+    SUM(COALESCE(ed.other_income, 0)) AS other_non_operating_income,
+    SUM(COALESCE(ed.interest_expense, 0)) AS non_operating_expenses,
+    SUM(COALESCE(ed.misc_loss, 0)) AS miscellaneous_loss,
+    SUM(COALESCE(ed.hq_expense, 0)) AS head_office_expense,
+    (
+      SUM(cm.gross_profit_actual)
+      - SUM(COALESCE(ed.operating_expense, 0))
+      + SUM(COALESCE(ed.rebate_income, 0))
+      + SUM(COALESCE(ed.other_income, 0))
+      - SUM(COALESCE(ed.interest_expense, 0))
+      - SUM(COALESCE(ed.misc_loss, 0))
+      - SUM(COALESCE(ed.hq_expense, 0))
+    ) AS recurring_profit_actual,
+    CAST(NULL AS FLOAT64) AS recurring_profit_target
+  FROM consolidated_metrics cm
+  LEFT JOIN expense_data ed
+    ON ed.detail_category IN ('ガラス工事計', '山本（改装）')
+  WHERE cm.organization = '工事営業部'
+  GROUP BY cm.organization
+
+  UNION ALL
+
+  -- 組織計レベル（硝子建材営業部計）
+  SELECT
+    cm.organization,
+    CONCAT(cm.organization, '計') AS detail_category,
+    -- ========== 売上・粗利は個人/部門データを集計 ==========
+    SUM(cm.sales_actual) AS sales_actual,
+    SUM(cm.sales_target) AS sales_target,
+    SUM(cm.sales_prev_year) AS sales_prev_year,
+    SUM(cm.gross_profit_actual) AS gross_profit_actual,
+    SUM(cm.gross_profit_target) AS gross_profit_target,
+    SUM(cm.gross_profit_prev_year) AS gross_profit_prev_year,
+    SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
+    SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
+    -- ========== 経費はexpense_dataから取得（硝子建材営業部のみ） ==========
+    MAX(ed.operating_expense) AS operating_expense_actual,
+    CAST(NULL AS FLOAT64) AS operating_expense_target,
+    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
+    CAST(NULL AS FLOAT64) AS operating_income_target,
+    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    MAX(ed.rebate_income) AS rebate_income,
+    MAX(ed.other_income) AS other_non_operating_income,
+    MAX(ed.interest_expense) AS non_operating_expenses,
+    MAX(ed.misc_loss) AS miscellaneous_loss,
+    MAX(ed.hq_expense) AS head_office_expense,
+    (
+      SUM(cm.gross_profit_actual)
+      - COALESCE(MAX(ed.operating_expense), 0)
+      + COALESCE(MAX(ed.rebate_income), 0)
+      + COALESCE(MAX(ed.other_income), 0)
+      - COALESCE(MAX(ed.interest_expense), 0)
+      - COALESCE(MAX(ed.misc_loss), 0)
+      - COALESCE(MAX(ed.hq_expense), 0)
+    ) AS recurring_profit_actual,
+    CAST(NULL AS FLOAT64) AS recurring_profit_target
+  FROM consolidated_metrics cm
+  CROSS JOIN (SELECT * FROM expense_data WHERE detail_category = '硝子建材営業部') ed
+  WHERE cm.organization = '硝子建材営業部'
+  GROUP BY cm.organization
 
   UNION ALL
 
@@ -649,29 +744,40 @@ aggregated_metrics AS (
   SELECT
     '東京支店' AS organization,
     '東京支店計' AS detail_category,
-    SUM(sales_actual) AS sales_actual,
-    SUM(sales_target) AS sales_target,
-    SUM(sales_prev_year) AS sales_prev_year,
-    SUM(gross_profit_actual) AS gross_profit_actual,
-    SUM(gross_profit_target) AS gross_profit_target,
-    SUM(gross_profit_prev_year) AS gross_profit_prev_year,
-    SAFE_DIVIDE(SUM(gross_profit_actual), SUM(sales_actual)) AS gross_profit_margin_actual,
-    SAFE_DIVIDE(SUM(gross_profit_target), SUM(sales_target)) AS gross_profit_margin_target,
-    SAFE_DIVIDE(SUM(gross_profit_prev_year), SUM(sales_prev_year)) AS gross_profit_margin_prev_year,
-    SUM(operating_expense_actual) AS operating_expense_actual,
-    SUM(operating_expense_target) AS operating_expense_target,
-    SUM(operating_expense_prev_year) AS operating_expense_prev_year,
-    SUM(operating_income_actual) AS operating_income_actual,
-    SUM(operating_income_target) AS operating_income_target,
-    SUM(operating_income_prev_year) AS operating_income_prev_year,
-    SUM(rebate_income) AS rebate_income,
-    SUM(other_non_operating_income) AS other_non_operating_income,
-    SUM(non_operating_expenses) AS non_operating_expenses,
-    SUM(miscellaneous_loss) AS miscellaneous_loss,
-    SUM(head_office_expense) AS head_office_expense,
-    SUM(recurring_profit_actual) AS recurring_profit_actual,
-    SUM(recurring_profit_target) AS recurring_profit_target
-  FROM consolidated_metrics
+    -- ========== 売上・粗利は個人/部門データを集計 ==========
+    SUM(cm.sales_actual) AS sales_actual,
+    SUM(cm.sales_target) AS sales_target,
+    SUM(cm.sales_prev_year) AS sales_prev_year,
+    SUM(cm.gross_profit_actual) AS gross_profit_actual,
+    SUM(cm.gross_profit_target) AS gross_profit_target,
+    SUM(cm.gross_profit_prev_year) AS gross_profit_prev_year,
+    SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
+    SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
+    -- ========== 経費はexpense_dataから集計（全組織の合計） ==========
+    SUM(COALESCE(ed.operating_expense, 0)) AS operating_expense_actual,
+    CAST(NULL AS FLOAT64) AS operating_expense_target,
+    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    SUM(cm.gross_profit_actual) - SUM(COALESCE(ed.operating_expense, 0)) AS operating_income_actual,
+    CAST(NULL AS FLOAT64) AS operating_income_target,
+    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(COALESCE(ed.rebate_income, 0)) AS rebate_income,
+    SUM(COALESCE(ed.other_income, 0)) AS other_non_operating_income,
+    SUM(COALESCE(ed.interest_expense, 0)) AS non_operating_expenses,
+    SUM(COALESCE(ed.misc_loss, 0)) AS miscellaneous_loss,
+    SUM(COALESCE(ed.hq_expense, 0)) AS head_office_expense,
+    (
+      SUM(cm.gross_profit_actual)
+      - SUM(COALESCE(ed.operating_expense, 0))
+      + SUM(COALESCE(ed.rebate_income, 0))
+      + SUM(COALESCE(ed.other_income, 0))
+      - SUM(COALESCE(ed.interest_expense, 0))
+      - SUM(COALESCE(ed.misc_loss, 0))
+      - SUM(COALESCE(ed.hq_expense, 0))
+    ) AS recurring_profit_actual,
+    CAST(NULL AS FLOAT64) AS recurring_profit_target
+  FROM consolidated_metrics cm
+  CROSS JOIN expense_data ed
 )
 
 -- ============================================================

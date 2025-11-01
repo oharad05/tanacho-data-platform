@@ -183,3 +183,272 @@ balance INT64
 )
 PARTITION BY DATE(slip_date)
 CLUSTER BY classification_type;
+
+============================================================
+DWH/DataMart更新の推奨実装パターン
+============================================================
+
+## 概要
+sql/split_dwh_dm/配下のDWH/DataMartクエリを定期的にBigQueryテーブルに反映するための実装パターン
+
+## アーキテクチャ選択ガイド
+
+### パターン1: BigQuery Scheduled Queries（最も推奨）
+【適用ケース】
+- シンプルな月次/日次バッチ処理
+- クエリ間の複雑な依存関係がない
+- 低コストで運用したい
+
+【メリット】
+- 設定が最もシンプル（BigQuery UIまたはbqコマンドで完結）
+- コスト効率が良い（実行時のみ課金）
+- エラー通知機能あり
+- メンテナンスが容易
+
+【デメリット】
+- 複雑な依存関係の管理が難しい
+- カスタムロジックの追加が困難
+
+---
+
+### パターン2: Cloud Workflows + Cloud Scheduler（複雑なワークフロー向け）
+【適用ケース】
+- DWH層とDataMart層の依存関係を明示的に管理したい
+- 並列実行で処理時間を短縮したい
+- エラーハンドリングとリトライが必要
+
+【メリット】
+- 複数のDWHクエリを並列実行可能（高速化）
+- DataMart層はDWH完了後に実行（依存関係管理）
+- エラーハンドリングとリトライ機能
+- 実行状況の可視化
+
+【デメリット】
+- YAML設定ファイルの管理が必要
+- Scheduled Queriesより設定が複雑
+
+---
+
+### パターン3: Cloud Functions + Cloud Scheduler（カスタムロジック必要時）
+【適用ケース】
+- 日付パラメータの動的生成が必要
+- 複雑なバリデーションや前処理が必要
+- 外部APIとの連携が必要
+
+【メリット】
+- Pythonで柔軟なロジック実装可能
+- 既存のPython関数と統合しやすい
+- カスタムエラーハンドリング
+
+【デメリット】
+- コード管理とデプロイが必要
+- 他の方法より運用コストが高い
+
+---
+
+## 推奨実装: BigQuery Scheduled Queries
+
+### DWHテーブル作成（初回のみ）
+
+# 1. dwh_sales_actual
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=organization,detail_category \
+  data-platform-prod-475201:corporate_data.dwh_sales_actual \
+  year_month:DATE,organization:STRING,detail_category:STRING,sales_amount:INTEGER,gross_profit_amount:INTEGER
+
+# 2. dwh_sales_actual_prev_year
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=organization,detail_category \
+  data-platform-prod-475201:corporate_data.dwh_sales_actual_prev_year \
+  year_month:DATE,organization:STRING,detail_category:STRING,sales_amount:INTEGER,gross_profit_amount:INTEGER
+
+# 3. dwh_sales_target
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=metric_type,organization,detail_category \
+  data-platform-prod-475201:corporate_data.dwh_sales_target \
+  year_month:DATE,metric_type:STRING,organization:STRING,detail_category:STRING,target_amount:INTEGER
+
+# 4. dwh_operating_expenses
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=detail_category \
+  data-platform-prod-475201:corporate_data.dwh_operating_expenses \
+  year_month:DATE,detail_category:STRING,operating_expense_amount:INTEGER
+
+# 5. dwh_non_operating_income
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=detail_category \
+  data-platform-prod-475201:corporate_data.dwh_non_operating_income \
+  year_month:DATE,detail_category:STRING,rebate_income:INTEGER,other_non_operating_income:INTEGER
+
+# 6. dwh_non_operating_expenses
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=detail_category \
+  data-platform-prod-475201:corporate_data.dwh_non_operating_expenses \
+  year_month:DATE,detail_category:STRING,interest_expense:FLOAT
+
+# 7. dwh_miscellaneous_loss
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=detail_category \
+  data-platform-prod-475201:corporate_data.dwh_miscellaneous_loss \
+  year_month:DATE,detail_category:STRING,miscellaneous_loss_amount:INTEGER
+
+# 8. dwh_head_office_expenses
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=detail_category \
+  data-platform-prod-475201:corporate_data.dwh_head_office_expenses \
+  year_month:DATE,detail_category:STRING,head_office_expense:INTEGER
+
+# 9. dwh_recurring_profit_target
+bq mk --table \
+  --time_partitioning_field=year_month \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=organization,detail_category \
+  data-platform-prod-475201:corporate_data.dwh_recurring_profit_target \
+  year_month:DATE,organization:STRING,detail_category:STRING,target_amount:INTEGER
+
+# 10. datamart_management_report_vertical
+bq mk --table \
+  --time_partitioning_field=date \
+  --time_partitioning_type=MONTH \
+  --clustering_fields=main_category,secondary_category,secondary_department \
+  data-platform-prod-475201:corporate_data.datamart_management_report_vertical \
+  date:DATE,main_category:STRING,main_category_sort_order:INTEGER,secondary_category:STRING,main_department:STRING,secondary_department:STRING,secondary_department_sort_order:INTEGER,value:FLOAT
+
+### スケジュールドクエリ作成
+
+# DWH層のスケジュール（毎月1日 02:00～02:45に実行）
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_sales_actual \
+  --replace --schedule='0 2 1 * *' \
+  --display_name='DWH: Sales Actual Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_sales_actual.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_sales_actual_prev_year \
+  --replace --schedule='5 2 1 * *' \
+  --display_name='DWH: Sales Actual Prev Year Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_sales_actual_prev_year.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_sales_target \
+  --replace --schedule='10 2 1 * *' \
+  --display_name='DWH: Sales Target Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_sales_target.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_operating_expenses \
+  --replace --schedule='15 2 1 * *' \
+  --display_name='DWH: Operating Expenses Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_operating_expenses.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_non_operating_income \
+  --replace --schedule='20 2 1 * *' \
+  --display_name='DWH: Non-Operating Income Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_non_operating_income.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_non_operating_expenses \
+  --replace --schedule='25 2 1 * *' \
+  --display_name='DWH: Non-Operating Expenses Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_non_operating_expenses.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_miscellaneous_loss \
+  --replace --schedule='30 2 1 * *' \
+  --display_name='DWH: Miscellaneous Loss Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_miscellaneous_loss.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_head_office_expenses \
+  --replace --schedule='35 2 1 * *' \
+  --display_name='DWH: Head Office Expenses Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_head_office_expenses.sql)"
+
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.dwh_recurring_profit_target \
+  --replace --schedule='40 2 1 * *' \
+  --display_name='DWH: Recurring Profit Target Monthly Update' \
+  "$(cat sql/split_dwh_dm/dwh_recurring_profit_target.sql)"
+
+# DataMart層のスケジュール（DWH完了後、毎月1日 03:00に実行）
+bq query --use_legacy_sql=false \
+  --destination_table=data-platform-prod-475201:corporate_data.datamart_management_report_vertical \
+  --replace --schedule='0 3 1 * *' \
+  --display_name='DataMart: Management Report Vertical Monthly Update' \
+  "$(cat sql/split_dwh_dm/datamart_management_report_vertical.sql)"
+
+---
+
+## パーティション・クラスタリング設計のポイント
+
+### パーティショニング（必須）
+- すべてのDWH/DataMartテーブルにyear_month/dateカラムで月次パーティション
+- クエリコスト削減とパフォーマンス向上
+- 古いデータの自動削除も可能（--time_partitioning_expiration）
+
+### クラスタリング（推奨）
+- よくフィルタ/JOINに使うカラムを指定
+- organization, detail_category, metric_typeなど
+- クエリパフォーマンスが大幅に向上
+
+### データ保持期限（オプション）
+# 90日後に自動削除する場合
+--time_partitioning_expiration=7776000
+
+---
+
+## スケジュール実行の監視
+
+# スケジュールドクエリの一覧確認
+bq ls --transfer_config --transfer_location=asia-northeast1
+
+# 実行履歴の確認
+bq ls --transfer_run --transfer_config=<CONFIG_ID> --transfer_location=asia-northeast1
+
+# エラー通知設定（Cloud Monitoringと連携）
+gcloud alpha monitoring policies create \
+  --notification-channels=<CHANNEL_ID> \
+  --display-name="DWH Update Failure Alert" \
+  --condition-display-name="Scheduled Query Failed" \
+  --condition-threshold-value=1 \
+  --condition-threshold-duration=60s
+
+---
+
+## 実行順序の考慮事項
+
+### DWH層（並列実行可能）
+- dwh_sales_actual
+- dwh_sales_actual_prev_year
+- dwh_sales_target
+- dwh_operating_expenses
+- dwh_non_operating_income
+- dwh_non_operating_expenses
+- dwh_miscellaneous_loss
+- dwh_head_office_expenses
+- dwh_recurring_profit_target
+
+↓ **全DWH完了後**
+
+### DataMart層（DWH依存）
+- datamart_management_report_vertical
+
+※ Scheduled Queriesの場合は時間差（例: DWH 02:00-02:45, DataMart 03:00）で対応
+※ Workflowsの場合は依存関係を明示的に定義可能

@@ -18,7 +18,7 @@ from google.auth import default as google_auth_default
 PROJECT_ID = "data-platform-prod-475201"
 DRIVE_FOLDER_ID = "1bHmrsqE1jdUgWbiPFsiPTymR5IRND4t6"  # 02_データソース
 LANDING_BUCKET = "data-platform-landing-prod"
-MAPPING_GCS_PATH = "config/mapping_files.csv"
+MAPPING_GCS_PATH = "config/mapping/mapping_files.csv"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 # ===== Drive API =====

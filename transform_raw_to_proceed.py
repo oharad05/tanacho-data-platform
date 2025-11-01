@@ -18,8 +18,8 @@ from pathlib import Path
 # 固定値設定
 PROJECT_ID = "data-platform-prod-475201"
 LANDING_BUCKET = "data-platform-landing-prod"
-COLUMNS_PATH = "columns"  # ローカルのカラム定義ファイルパス
-MONETARY_SCALE_FILE = "mapping/monetary_scale_conversion.csv"  # 金額変換設定ファイル
+COLUMNS_PATH = "config/columns"  # ローカルのカラム定義ファイルパス
+MONETARY_SCALE_FILE = "config/mapping/monetary_scale_conversion.csv"  # 金額変換設定ファイル
 
 def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
     """
@@ -389,7 +389,10 @@ def process_gcs_files(yyyymm: str):
         "department_summary",
         "internal_interest",
         "profit_plan_term",
-        "ledger_loss"
+        "ledger_loss",
+        "stocks",
+        "ms_allocation_ratio",
+        "ms_department_category"
     ]
     
     success_count = 0
@@ -413,9 +416,14 @@ def process_gcs_files(yyyymm: str):
             temp_csv = f"/tmp/{table_name}.csv"
             
             raw_blob.download_to_filename(temp_excel)
-            
+
             # 変換処理
-            if transform_excel_to_csv(temp_excel, temp_csv, table_name):
+            # ms_department_categoryの場合は特定のシートを指定
+            sheet_name = None
+            if table_name == "ms_department_category":
+                sheet_name = "99_部門カテゴリマスタ(部門集計表ヘッダー情報)"
+
+            if transform_excel_to_csv(temp_excel, temp_csv, table_name, sheet_name):
                 # proceedにアップロード
                 proceed_blob = bucket.blob(proceed_path)
                 proceed_blob.upload_from_filename(temp_csv)
