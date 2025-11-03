@@ -82,7 +82,7 @@ non_operating_income AS (
   FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
 ),
 
--- 5. 営業外費用（社内利息）
+-- 5. 営業外費用（社内利息A・B）
 non_operating_expenses AS (
   SELECT
     year_month,
@@ -443,15 +443,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END AS secondary_department_sort_order,
     sales_prev_year AS value
@@ -473,15 +474,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     sales_target
@@ -503,15 +505,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     sales_actual
@@ -533,15 +536,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -566,15 +570,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -601,15 +606,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_prev_year
@@ -631,15 +637,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_target
@@ -661,15 +668,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_actual
@@ -691,15 +699,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -724,15 +733,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -759,15 +769,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_margin_prev_year
@@ -789,15 +800,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_margin_target
@@ -819,15 +831,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     gross_profit_margin_actual
@@ -849,15 +862,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -882,15 +896,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
@@ -917,15 +932,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     operating_expense_actual
@@ -947,15 +963,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     NULL  -- 前年実績がないためNULL
@@ -977,15 +994,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     NULL  -- 本年目標がないためNULL
@@ -1009,15 +1027,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     operating_income_actual
@@ -1039,15 +1058,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     NULL  -- 前年実績がないためNULL
@@ -1069,15 +1089,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     NULL  -- 本年目標がないためNULL
@@ -1101,15 +1122,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     rebate_income
@@ -1133,15 +1155,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     other_non_operating_income
@@ -1149,10 +1172,10 @@ vertical_format AS (
 
   UNION ALL
 
-  -- 営業外費用（社内利息）: 本年実績のみ
+  -- 営業外費用（社内利息A・B）: 本年実績のみ
   SELECT
     target_month,
-    '営業外費用（社内利息）',
+    '営業外費用（社内利息A・B）',
     8,
     '本年実績',
     3,
@@ -1165,15 +1188,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     non_operating_expenses
@@ -1197,15 +1221,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     miscellaneous_loss
@@ -1229,15 +1254,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     head_office_expense
@@ -1261,15 +1287,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     recurring_profit_target
@@ -1291,15 +1318,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     recurring_profit_actual
@@ -1321,15 +1349,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     NULL  -- 前年実績がないためNULL
@@ -1351,15 +1380,16 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN 'ガラス工事計' THEN 7
-      WHEN '山本（改装）' THEN 8
-      WHEN '硝子建材営業部計' THEN 9
-      WHEN '硝子工事' THEN 10
-      WHEN 'ビルサッシ' THEN 11
-      WHEN '硝子販売' THEN 12
-      WHEN 'サッシ販売' THEN 13
-      WHEN 'サッシ完成品' THEN 14
-      WHEN 'その他' THEN 15
+      WHEN '岡本（清水他）' THEN 7
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
       ELSE 99
     END,
     CASE
