@@ -23,12 +23,12 @@ echo "========================================="
 
 echo ""
 echo "経営資料（当月）を更新中..."
+# 注: SQLファイル内にCREATE OR REPLACE TABLE文が含まれているため、
+#     --destination_tableオプションは使用せず、直接実行します。
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  --replace \
-  --destination_table="${DATASET_DM}.management_documents_current_month_tbl" \
-  "$(cat ${SQL_DIR}/datamart_management_report_vertical.sql)"
+  < "${SQL_DIR}/datamart_management_report_vertical.sql"
 
 echo ""
 echo "========================================="

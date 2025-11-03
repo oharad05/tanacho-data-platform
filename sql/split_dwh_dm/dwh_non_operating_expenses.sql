@@ -19,9 +19,7 @@ DWH: 営業外費用（社内利息）
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE('2025-09-01');
-DECLARE two_months_ago DATE DEFAULT DATE_SUB(target_month, INTERVAL 2 MONTH);
-
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` AS
 WITH
 -- 山本（改装）の社内利息計算
 yamamoto_interest AS (
@@ -35,9 +33,9 @@ yamamoto_interest AS (
     `data-platform-prod-475201.corporate_data.internal_interest` AS ii
     ON bb.sales_month = ii.year_month
   WHERE
-    bb.sales_month = two_months_ago  -- 2か月前のデータ
+    bb.sales_month = DATE('2025-07-01')  -- 2か月前のデータ
     AND bb.branch_code = 13  -- 改修課
-    AND ii.year_month = two_months_ago
+    AND ii.year_month = DATE('2025-07-01')
     AND ii.branch = '東京支店'
     AND ii.category = '売掛金'
   LIMIT 1
@@ -63,7 +61,7 @@ department_interest AS (
         END
       ) AS glass_sales_interest
     FROM `data-platform-prod-475201.corporate_data.department_summary`
-    WHERE sales_accounting_period = target_month
+    WHERE sales_accounting_period = DATE('2025-09-01')
   )
   SELECT 'ガラス工事計' AS detail_category, glass_construction_interest AS interest_from_summary FROM aggregated
   UNION ALL
@@ -85,10 +83,10 @@ glass_interest AS (
 )
 
 -- 統合
-SELECT target_month AS year_month, detail_category, interest_expense FROM yamamoto_interest
+SELECT DATE('2025-09-01') AS year_month, detail_category, interest_expense FROM yamamoto_interest
 UNION ALL
-SELECT target_month, detail_category, interest_expense FROM glass_interest
+SELECT DATE('2025-09-01'), detail_category, interest_expense FROM glass_interest
 UNION ALL
-SELECT target_month, detail_category, interest_from_summary AS interest_expense
+SELECT DATE('2025-09-01'), detail_category, interest_from_summary AS interest_expense
 FROM department_interest
 WHERE detail_category = '硝子建材営業部';

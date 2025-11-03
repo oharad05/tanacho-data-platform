@@ -18,8 +18,7 @@ DWH: 経常利益目標
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE('2025-09-01');
-
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` AS
 WITH profit_plan AS (
   SELECT
     period,
@@ -39,7 +38,7 @@ WITH profit_plan AS (
     sash_finished_products,
     others
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
-  WHERE period = target_month
+  WHERE period = DATE('2025-09-01')
 )
 
 -- 経常利益目標
@@ -65,7 +64,7 @@ UNION ALL
 
 SELECT period, '工事営業部', '佐々木（大成・鹿島他）', company_sasaki FROM profit_plan WHERE item = '経常利益'
 UNION ALL
-SELECT period, '工事営業部', '岡本（清水他）', company_asai FROM profit_plan WHERE item = '経常利益'
+SELECT period, '工事営業部', '浅井（清水他）', company_asai FROM profit_plan WHERE item = '経常利益'
 UNION ALL
 SELECT period, '工事営業部', '小笠原（三井住友他）', company_ogasawara FROM profit_plan WHERE item = '経常利益'
 UNION ALL

@@ -37,7 +37,7 @@ sales_actual AS (
     detail_category,
     sales_amount,
     gross_profit_amount
-  FROM `data-platform-prod-475201.corporate_data_dwh.sales_actual`
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
 ),
 
 -- 1-2. 売上高・粗利実績（前年実績）
@@ -48,7 +48,7 @@ sales_actual_prev_year AS (
     detail_category,
     sales_amount,
     gross_profit_amount
-  FROM `data-platform-prod-475201.corporate_data_dwh.sales_actual_prev_year`
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
 ),
 
 -- 2. 売上高・粗利目標
@@ -59,7 +59,7 @@ sales_target AS (
     organization,
     detail_category,
     target_amount
-  FROM `data-platform-prod-475201.corporate_data_dwh.sales_target`
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
 ),
 
 -- 3. 営業経費
@@ -115,7 +115,7 @@ recurring_profit_target AS (
     organization,
     detail_category,
     target_amount
-  FROM `data-platform-prod-475201.corporate_data_dwh.recurring_profit_target`
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target`
 ),
 
 -- ============================================================
@@ -261,7 +261,8 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    MAX(cm.recurring_profit_target) AS recurring_profit_target
+    (SELECT target_amount FROM recurring_profit_target
+     WHERE organization = '工事営業部' AND detail_category = 'ガラス工事計') AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
     ON cm.organization = ed.parent_organization
@@ -307,7 +308,8 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    MAX(cm.recurring_profit_target) AS recurring_profit_target
+    (SELECT target_amount FROM recurring_profit_target
+     WHERE organization = '工事営業部' AND detail_category = '工事営業部計') AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN (
     SELECT
@@ -363,7 +365,8 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    MAX(cm.recurring_profit_target) AS recurring_profit_target
+    (SELECT target_amount FROM recurring_profit_target
+     WHERE organization = '硝子建材営業部' AND detail_category = '硝子建材営業部計') AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
     ON cm.organization = ed.parent_organization
@@ -408,7 +411,8 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    MAX(cm.recurring_profit_target) AS recurring_profit_target
+    (SELECT target_amount FROM recurring_profit_target
+     WHERE organization = '東京支店' AND detail_category = '東京支店計') AS recurring_profit_target
   FROM consolidated_metrics cm
   CROSS JOIN (
     SELECT
