@@ -18,8 +18,8 @@ from google.cloud.exceptions import GoogleCloudError
 PROJECT_ID = "data-platform-prod-475201"
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = "data-platform-landing-prod"
-MAPPING_FILE = "mapping/excel_mapping.csv"
-COLUMNS_PATH = "columns"
+MAPPING_FILE = "config/mapping/excel_mapping.csv"  # Note: このファイルは現在使用されていない可能性があります
+COLUMNS_PATH = "config/columns"
 
 # テーブル定義とパーティション列のマッピング
 TABLE_CONFIG = {
