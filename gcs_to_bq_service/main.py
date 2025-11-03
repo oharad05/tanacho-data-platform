@@ -313,7 +313,13 @@ def transform_excel_to_csv(
 
         # Excelファイル読み込み
         excel_bytes = raw_blob.download_as_bytes()
-        df = pd.read_excel(io.BytesIO(excel_bytes))
+
+        # profit_plan_termの場合は「東京支店目標103期」シートのみを読み込む
+        if table_name == "profit_plan_term":
+            df = pd.read_excel(io.BytesIO(excel_bytes), sheet_name='東京支店目標103期')
+            print(f"   シート指定: 東京支店目標103期")
+        else:
+            df = pd.read_excel(io.BytesIO(excel_bytes))
 
         # カラム名の改行を除去
         df.columns = [col.replace('\n', '') if isinstance(col, str) else col for col in df.columns]

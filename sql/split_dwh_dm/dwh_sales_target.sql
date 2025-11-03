@@ -19,8 +19,7 @@ DWH: 売上高・粗利目標
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE('2025-09-01');
-
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` AS
 WITH profit_plan AS (
   SELECT
     period,
@@ -40,7 +39,7 @@ WITH profit_plan AS (
     sash_finished_products,
     others
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
-  WHERE period = target_month
+  WHERE period = DATE('2025-09-01')
 )
 
 -- 売上高目標
@@ -68,7 +67,7 @@ UNION ALL
 
 SELECT period, 'sales', '工事営業部', '佐々木（大成・鹿島他）', company_sasaki FROM profit_plan WHERE item = '売上高'
 UNION ALL
-SELECT period, 'sales', '工事営業部', '岡本（清水他）', company_asai FROM profit_plan WHERE item = '売上高'
+SELECT period, 'sales', '工事営業部', '浅井（清水他）', company_asai FROM profit_plan WHERE item = '売上高'
 UNION ALL
 SELECT period, 'sales', '工事営業部', '小笠原（三井住友他）', company_ogasawara FROM profit_plan WHERE item = '売上高'
 UNION ALL
@@ -110,7 +109,7 @@ SELECT period, 'gross_profit', '工事営業部', '工事営業部計', construc
 UNION ALL
 SELECT period, 'gross_profit', '工事営業部', '佐々木（大成・鹿島他）', company_sasaki FROM profit_plan WHERE item = '売上総利益'
 UNION ALL
-SELECT period, 'gross_profit', '工事営業部', '岡本（清水他）', company_asai FROM profit_plan WHERE item = '売上総利益'
+SELECT period, 'gross_profit', '工事営業部', '浅井（清水他）', company_asai FROM profit_plan WHERE item = '売上総利益'
 UNION ALL
 SELECT period, 'gross_profit', '工事営業部', '小笠原（三井住友他）', company_ogasawara FROM profit_plan WHERE item = '売上総利益'
 UNION ALL

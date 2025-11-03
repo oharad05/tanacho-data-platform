@@ -23,8 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE('2025-09-01');
-
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_current_month_tbl` AS
 WITH
 -- ============================================================
 -- DWHテーブルからデータを読み込み
@@ -429,7 +428,7 @@ aggregated_metrics AS (
 vertical_format AS (
   -- 売上高: 前年実績
   SELECT
-    target_month AS date,
+    DATE('2025-09-01') AS date,
     '売上高' AS main_category,
     1 AS main_category_sort_order,
     '前年実績' AS secondary_category,
@@ -460,7 +459,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 本年目標
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上高',
     1,
     '本年目標',
@@ -491,7 +490,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 本年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上高',
     1,
     '本年実績',
@@ -522,10 +521,10 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上高',
     1,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -556,10 +555,10 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上高',
     1,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -592,7 +591,7 @@ vertical_format AS (
 
   -- 売上総利益: 前年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益',
     2,
     '前年実績',
@@ -623,7 +622,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 本年目標
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益',
     2,
     '本年目標',
@@ -654,7 +653,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 本年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益',
     2,
     '本年実績',
@@ -685,10 +684,10 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益',
     2,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -719,10 +718,10 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益',
     2,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -755,7 +754,7 @@ vertical_format AS (
 
   -- 売上総利益率: 前年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益率(%)',
     3,
     '前年実績',
@@ -786,7 +785,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 本年目標
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益率(%)',
     3,
     '本年目標',
@@ -817,7 +816,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 本年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益率(%)',
     3,
     '本年実績',
@@ -848,10 +847,10 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益率(%)',
     3,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -882,10 +881,10 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '売上総利益率(%)',
     3,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -918,7 +917,7 @@ vertical_format AS (
 
   -- 営業経費: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業経費',
     4,
     '本年実績',
@@ -949,10 +948,10 @@ vertical_format AS (
   UNION ALL
   -- 営業経費: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業経費',
     4,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -980,10 +979,10 @@ vertical_format AS (
   UNION ALL
   -- 営業経費: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業経費',
     4,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -1013,7 +1012,7 @@ vertical_format AS (
 
   -- 営業利益: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業利益',
     5,
     '本年実績',
@@ -1044,10 +1043,10 @@ vertical_format AS (
   UNION ALL
   -- 営業利益: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業利益',
     5,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -1075,10 +1074,10 @@ vertical_format AS (
   UNION ALL
   -- 営業利益: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業利益',
     5,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -1108,7 +1107,7 @@ vertical_format AS (
 
   -- 営業外収入（リベート）: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業外収入（リベート）',
     6,
     '本年実績',
@@ -1141,7 +1140,7 @@ vertical_format AS (
 
   -- 営業外収入（その他）: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業外収入（その他）',
     7,
     '本年実績',
@@ -1174,7 +1173,7 @@ vertical_format AS (
 
   -- 営業外費用（社内利息A・B）: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業外費用（社内利息A・B）',
     8,
     '本年実績',
@@ -1207,7 +1206,7 @@ vertical_format AS (
 
   -- 営業外費用（雑損失）: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '営業外費用（雑損失）',
     9,
     '本年実績',
@@ -1240,7 +1239,7 @@ vertical_format AS (
 
   -- 本店管理費: 本年実績のみ
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '本店管理費',
     10,
     '本年実績',
@@ -1273,7 +1272,7 @@ vertical_format AS (
 
   -- 経常利益: 本年目標
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '経常利益',
     11,
     '本年目標',
@@ -1304,7 +1303,7 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 本年実績
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '経常利益',
     11,
     '本年実績',
@@ -1335,10 +1334,10 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 前年比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '経常利益',
     11,
-    '前年比',
+    '前年比(%)',
     4,
     '東京支店',
     detail_category,
@@ -1366,10 +1365,10 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 目標比
   SELECT
-    target_month,
+    DATE('2025-09-01'),
     '経常利益',
     11,
-    '目標比',
+    '目標比(%)',
     5,
     '東京支店',
     detail_category,
@@ -1403,7 +1402,7 @@ SELECT
   *,
   CASE
     WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)') THEN value * 100
-    WHEN secondary_category IN ('前年比', '目標比') THEN value * 100
+    WHEN secondary_category IN ('前年比(%)', '目標比(%)') THEN value * 100
     ELSE value
   END AS display_value
 FROM vertical_format;

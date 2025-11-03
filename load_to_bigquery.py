@@ -249,54 +249,61 @@ def delete_partition_data(
     yyyymm: str
 ) -> bool:
     """
-    指定月のパーティションデータを削除（重複防止）
-    
+    既存データを削除（重複防止）
+
+    CSVには複数月のデータが含まれている場合があるため、
+    テーブルごとに適切な削除方法を使用
+
     Args:
         client: BigQueryクライアント
         table_name: テーブル名
         yyyymm: 対象年月（例: 202509）
-    
+
     Returns:
         成功時True
     """
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     partition_field = TABLE_CONFIG[table_name]["partition_field"]
-    
+
     # yyyymmから年月を抽出
     year = yyyymm[:4]
     month = yyyymm[4:6]
-    
-    # パーティション条件に応じたDELETE文を作成
-    if table_name in ["ledger_income", "ledger_loss"]:
-        # DATETIME型の場合
+
+    # テーブル全体を削除するテーブル（CSVに複数月のデータが含まれるため）
+    if table_name in ["billing_balance", "profit_plan_term", "ledger_loss"]:
+        delete_query = f"DELETE FROM `{table_id}` WHERE TRUE"
+        print(f"   🗑️  全データ削除中（CSVに複数月のデータが含まれるため）")
+    elif table_name in ["ledger_income"]:
+        # DATETIME型で、指定月のすべての日付を削除
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE DATE({partition_field}) = '{year}-{month}-01'
+        WHERE DATE_TRUNC(DATE({partition_field}), MONTH) = '{year}-{month}-01'
         """
+        print(f"   🗑️  既存データ削除中: {year}-{month}のすべての日付")
     else:
-        # DATE型の場合
+        # その他のテーブルは指定月のみ削除
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE {partition_field} = '{year}-{month}-01'
+        WHERE DATE_TRUNC({partition_field}, MONTH) = '{year}-{month}-01'
         """
-    
-    try:
         print(f"   🗑️  既存データ削除中: {year}-{month}")
+
+    try:
         query_job = client.query(delete_query)
         query_job.result()  # 完了を待機
-        
+
         if query_job.num_dml_affected_rows:
             print(f"      削除: {query_job.num_dml_affected_rows} 行")
         else:
             print(f"      削除対象なし")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"   ⚠️  削除処理スキップ: {e}")
         return True  # 削除失敗してもロードは続行
 
-def process_all_tables(yyyymm: str, replace_existing: bool = False):
+def process_all_tables(yyyymm: str, replace_existing: bool = True):
     """
     全テーブルのBigQueryロード処理
     

@@ -15,11 +15,9 @@ DWH: 売上高・粗利実績（前年実績）
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE('2025-09-01');
-DECLARE prev_year_month DATE DEFAULT DATE_SUB(target_month, INTERVAL 1 YEAR);
-
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` AS
 SELECT
-  prev_year_month AS year_month,
+  DATE('2024-09-01') AS year_month,
   -- 組織識別
   CASE
     WHEN branch_code = 11 THEN '工事営業部'
@@ -33,6 +31,7 @@ SELECT
     WHEN branch_code = 11 AND staff_name = '岡本一郎' THEN '岡本（清水他）'
     WHEN branch_code = 11 AND staff_name = '小笠原洋介' THEN '小笠原（三井住友他）'
     WHEN branch_code = 11 AND staff_name = '高石麻友子' THEN '高石（内装・リニューアル）'
+    WHEN branch_code = 11 AND staff_name = '浅井一作' THEN '浅井（清水他）'
     WHEN branch_code = 11 AND staff_name = '山本' THEN '山本（改装）'
     -- 硝子建材営業部の部門別
     WHEN branch_code = 25 AND division_code = 11 THEN '硝子工事'
