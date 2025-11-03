@@ -18,7 +18,7 @@ DWH: 経常利益目標
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH);
+DECLARE target_month DATE DEFAULT DATE('2025-09-01');
 
 WITH profit_plan AS (
   SELECT

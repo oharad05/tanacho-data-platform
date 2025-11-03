@@ -23,7 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH);
+DECLARE target_month DATE DEFAULT DATE('2025-09-01');
 
 WITH
 -- ============================================================
@@ -124,6 +124,13 @@ recurring_profit_target AS (
 -- ============================================================
 expense_data AS (
   SELECT
+    -- parent_organizationを追加（detail_categoryから導出）
+    CASE
+      WHEN oe.detail_category = 'ガラス工事計' THEN '工事営業部'
+      WHEN oe.detail_category = '山本（改装）' THEN '工事営業部'
+      WHEN oe.detail_category = '硝子建材営業部' THEN '硝子建材営業部'
+      ELSE NULL
+    END AS parent_organization,
     oe.detail_category,
     oe.operating_expense_amount AS operating_expense,
     noi.rebate_income,
@@ -215,7 +222,7 @@ aggregated_metrics AS (
 
   UNION ALL
 
-  -- 中間レベル（ガラス工事計 = 佐々木+岡本+小笠原+高石）
+  -- 中間レベル（ガラス工事計 = 佐々木+岡本+小笠原+高石+浅井）
   SELECT
     cm.organization,
     'ガラス工事計' AS detail_category,
@@ -257,9 +264,11 @@ aggregated_metrics AS (
     ) AS recurring_profit_actual,
     MAX(cm.recurring_profit_target) AS recurring_profit_target
   FROM consolidated_metrics cm
-  CROSS JOIN (SELECT * FROM expense_data WHERE detail_category = 'ガラス工事計') ed
+  LEFT JOIN expense_data ed
+    ON cm.organization = ed.parent_organization
+    AND ed.detail_category = 'ガラス工事計'
   WHERE cm.organization = '工事営業部'
-    AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）')
+    AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
   GROUP BY cm.organization
 
   UNION ALL
@@ -279,30 +288,42 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（ガラス工事計 + 山本（改装）） ==========
-    SUM(COALESCE(ed.operating_expense, 0)) AS operating_expense_actual,
+    MAX(ed.operating_expense) AS operating_expense_actual,
     CAST(NULL AS FLOAT64) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
-    SUM(cm.gross_profit_actual) - SUM(COALESCE(ed.operating_expense, 0)) AS operating_income_actual,
+    SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     CAST(NULL AS FLOAT64) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
-    SUM(COALESCE(ed.rebate_income, 0)) AS rebate_income,
-    SUM(COALESCE(ed.other_income, 0)) AS other_non_operating_income,
-    SUM(COALESCE(ed.interest_expense, 0)) AS non_operating_expenses,
-    SUM(COALESCE(ed.misc_loss, 0)) AS miscellaneous_loss,
-    SUM(COALESCE(ed.hq_expense, 0)) AS head_office_expense,
+    MAX(ed.rebate_income) AS rebate_income,
+    MAX(ed.other_income) AS other_non_operating_income,
+    MAX(ed.interest_expense) AS non_operating_expenses,
+    MAX(ed.misc_loss) AS miscellaneous_loss,
+    MAX(ed.hq_expense) AS head_office_expense,
     (
       SUM(cm.gross_profit_actual)
-      - SUM(COALESCE(ed.operating_expense, 0))
-      + SUM(COALESCE(ed.rebate_income, 0))
-      + SUM(COALESCE(ed.other_income, 0))
-      - SUM(COALESCE(ed.interest_expense, 0))
-      - SUM(COALESCE(ed.misc_loss, 0))
-      - SUM(COALESCE(ed.hq_expense, 0))
+      - COALESCE(MAX(ed.operating_expense), 0)
+      + COALESCE(MAX(ed.rebate_income), 0)
+      + COALESCE(MAX(ed.other_income), 0)
+      - COALESCE(MAX(ed.interest_expense), 0)
+      - COALESCE(MAX(ed.misc_loss), 0)
+      - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
     MAX(cm.recurring_profit_target) AS recurring_profit_target
   FROM consolidated_metrics cm
-  LEFT JOIN expense_data ed
-    ON ed.detail_category IN ('ガラス工事計', '山本（改装）')
+  LEFT JOIN (
+    SELECT
+      parent_organization,
+      SUM(COALESCE(operating_expense, 0)) AS operating_expense,
+      SUM(COALESCE(rebate_income, 0)) AS rebate_income,
+      SUM(COALESCE(other_income, 0)) AS other_income,
+      SUM(COALESCE(interest_expense, 0)) AS interest_expense,
+      SUM(COALESCE(misc_loss, 0)) AS misc_loss,
+      SUM(COALESCE(hq_expense, 0)) AS hq_expense
+    FROM expense_data
+    WHERE detail_category IN ('ガラス工事計', '山本（改装）')
+    GROUP BY parent_organization
+  ) ed
+    ON cm.organization = ed.parent_organization
   WHERE cm.organization = '工事営業部'
   GROUP BY cm.organization
 
@@ -345,7 +366,9 @@ aggregated_metrics AS (
     ) AS recurring_profit_actual,
     MAX(cm.recurring_profit_target) AS recurring_profit_target
   FROM consolidated_metrics cm
-  CROSS JOIN (SELECT * FROM expense_data WHERE detail_category = '硝子建材営業部') ed
+  LEFT JOIN expense_data ed
+    ON cm.organization = ed.parent_organization
+    AND ed.detail_category = '硝子建材営業部'
   WHERE cm.organization = '硝子建材営業部'
   GROUP BY cm.organization
 
@@ -366,29 +389,38 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)) AS gross_profit_margin_target,
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（全組織の合計） ==========
-    SUM(COALESCE(ed.operating_expense, 0)) AS operating_expense_actual,
+    MAX(ed.operating_expense) AS operating_expense_actual,
     CAST(NULL AS FLOAT64) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
-    SUM(cm.gross_profit_actual) - SUM(COALESCE(ed.operating_expense, 0)) AS operating_income_actual,
+    SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     CAST(NULL AS FLOAT64) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
-    SUM(COALESCE(ed.rebate_income, 0)) AS rebate_income,
-    SUM(COALESCE(ed.other_income, 0)) AS other_non_operating_income,
-    SUM(COALESCE(ed.interest_expense, 0)) AS non_operating_expenses,
-    SUM(COALESCE(ed.misc_loss, 0)) AS miscellaneous_loss,
-    SUM(COALESCE(ed.hq_expense, 0)) AS head_office_expense,
+    MAX(ed.rebate_income) AS rebate_income,
+    MAX(ed.other_income) AS other_non_operating_income,
+    MAX(ed.interest_expense) AS non_operating_expenses,
+    MAX(ed.misc_loss) AS miscellaneous_loss,
+    MAX(ed.hq_expense) AS head_office_expense,
     (
       SUM(cm.gross_profit_actual)
-      - SUM(COALESCE(ed.operating_expense, 0))
-      + SUM(COALESCE(ed.rebate_income, 0))
-      + SUM(COALESCE(ed.other_income, 0))
-      - SUM(COALESCE(ed.interest_expense, 0))
-      - SUM(COALESCE(ed.misc_loss, 0))
-      - SUM(COALESCE(ed.hq_expense, 0))
+      - COALESCE(MAX(ed.operating_expense), 0)
+      + COALESCE(MAX(ed.rebate_income), 0)
+      + COALESCE(MAX(ed.other_income), 0)
+      - COALESCE(MAX(ed.interest_expense), 0)
+      - COALESCE(MAX(ed.misc_loss), 0)
+      - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
     MAX(cm.recurring_profit_target) AS recurring_profit_target
   FROM consolidated_metrics cm
-  CROSS JOIN expense_data ed
+  CROSS JOIN (
+    SELECT
+      SUM(COALESCE(operating_expense, 0)) AS operating_expense,
+      SUM(COALESCE(rebate_income, 0)) AS rebate_income,
+      SUM(COALESCE(other_income, 0)) AS other_income,
+      SUM(COALESCE(interest_expense, 0)) AS interest_expense,
+      SUM(COALESCE(misc_loss, 0)) AS misc_loss,
+      SUM(COALESCE(hq_expense, 0)) AS hq_expense
+    FROM expense_data
+  ) ed
 ),
 
 -- ============================================================

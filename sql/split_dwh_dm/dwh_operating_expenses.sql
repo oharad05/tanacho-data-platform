@@ -14,7 +14,7 @@ DWH: 営業経費（本年実績）
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH);
+DECLARE target_month DATE DEFAULT DATE('2025-09-01');
 
 WITH aggregated AS (
   SELECT

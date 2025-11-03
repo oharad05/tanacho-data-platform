@@ -15,7 +15,7 @@ DWH: 売上高・粗利実績（前年実績）
 ============================================================
 */
 
-DECLARE target_month DATE DEFAULT DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH);
+DECLARE target_month DATE DEFAULT DATE('2025-09-01');
 DECLARE prev_year_month DATE DEFAULT DATE_SUB(target_month, INTERVAL 1 YEAR);
 
 SELECT
