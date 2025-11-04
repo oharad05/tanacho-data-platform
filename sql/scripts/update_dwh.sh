@@ -73,11 +73,23 @@ bq query \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_head_office_expenses.sql"
 
-echo "[9/9] 経常利益目標を更新中..."
+echo "[9/11] 経常利益目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_recurring_profit_target.sql"
+
+echo "[10/11] 営業経費目標を更新中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/dwh_operating_expenses_target.sql"
+
+echo "[11/11] 営業利益目標を更新中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/dwh_operating_income_target.sql"
 
 echo ""
 echo "========================================="
