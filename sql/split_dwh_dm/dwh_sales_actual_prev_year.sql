@@ -17,7 +17,7 @@ DWH: 売上高・粗利実績（前年実績）
 
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` AS
 SELECT
-  DATE('2024-09-01') AS year_month,
+  sales_accounting_period AS year_month,
   -- 組織識別
   CASE
     WHEN branch_code = 11 THEN '工事営業部'
@@ -42,14 +42,14 @@ SELECT
     WHEN branch_code = 25 AND division_code IN (12, 23, 24, 25, 30, 31, 40, 41, 50, 70, 71, 99) THEN 'その他'
     ELSE '未分類'
   END AS detail_category,
-  -- 金額（円単位）
-  SUM(sales_actual) AS sales_amount,
-  SUM(gross_profit_actual) AS gross_profit_amount
+  -- 金額（円単位）- 前年実績カラムを使用
+  SUM(prev_year_sales_actual) AS sales_amount,
+  SUM(prev_year_gross_profit_actual) AS gross_profit_amount
 FROM
   `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
 WHERE
-  sales_accounting_period = DATE('2024-09-01')  -- 前年同月のデータを取得
-  AND branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
+  branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
 GROUP BY
+  year_month,
   organization,
   detail_category;

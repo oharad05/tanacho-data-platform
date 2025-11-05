@@ -23,7 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_current_month_tbl` AS
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period` AS
 WITH
 -- ============================================================
 -- DWHテーブルからデータを読み込み
@@ -139,34 +139,38 @@ operating_income_target AS (
 ),
 
 -- ============================================================
+-- 全組織×カテゴリ×月の組み合わせを生成
+-- 売上関連テーブルのみから組み合わせを生成
+-- （target系テーブルは集約レベルが異なるため除外）
+-- ============================================================
+all_combinations AS (
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM (
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+    UNION DISTINCT
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+    UNION DISTINCT
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+  )
+),
+
+-- ============================================================
 -- 11. 経常利益の累積計算（期首から当月まで）
 -- ============================================================
 cumulative_recurring_profit AS (
   WITH
-  -- 期首の決定（4月1日）
-  fiscal_year_start AS (
-    SELECT
-      CASE
-        WHEN EXTRACT(MONTH FROM DATE('2025-09-01')) >= 4
-        THEN DATE(EXTRACT(YEAR FROM DATE('2025-09-01')), 4, 1)
-        ELSE DATE(EXTRACT(YEAR FROM DATE('2025-09-01')) - 1, 4, 1)
-      END AS start_date
-  ),
-
-  -- 全組織×detail_categoryの組み合わせを取得
-  org_categories AS (
-    SELECT DISTINCT organization, detail_category
+  -- 全組織×detail_category×月の組み合わせを取得
+  org_categories_months AS (
+    SELECT DISTINCT year_month, organization, detail_category
     FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
-    WHERE year_month >= (SELECT start_date FROM fiscal_year_start)
-      AND year_month <= DATE('2025-09-01')
   ),
 
   -- 各月の経常利益実績を計算
   monthly_profit AS (
     SELECT
+      sa.year_month,
       sa.organization,
       sa.detail_category,
-      sa.year_month,
       -- 売上総利益
       sa.gross_profit_amount
       -- 営業経費
@@ -198,24 +202,44 @@ cumulative_recurring_profit AS (
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` he
       ON sa.detail_category = he.detail_category
       AND sa.year_month = he.year_month
-    WHERE sa.year_month >= (SELECT start_date FROM fiscal_year_start)
-      AND sa.year_month <= DATE('2025-09-01')
+  ),
+
+  -- 期首を月ごとに計算
+  fiscal_year_starts AS (
+    SELECT DISTINCT
+      year_month,
+      CASE
+        WHEN EXTRACT(MONTH FROM year_month) >= 4
+        THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
+        ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
+      END AS fiscal_start_date
+    FROM org_categories_months
   )
 
-  -- 累積計算
+  -- 累積計算（各月ごとに期首から当月までの累積）
   SELECT
-    org_categories.organization,
-    org_categories.detail_category,
-    SUM(COALESCE(mp.monthly_recurring_profit, 0)) AS cumulative_actual,
-    -- 目標も累積（現状は1ヶ月分のみだが、将来的に対応）
-    (SELECT SUM(target_amount) FROM recurring_profit_target rpt
-     WHERE rpt.organization = org_categories.organization
-     AND rpt.detail_category = org_categories.detail_category) AS cumulative_target
-  FROM org_categories
-  LEFT JOIN monthly_profit mp
-    ON org_categories.organization = mp.organization
-    AND org_categories.detail_category = mp.detail_category
-  GROUP BY org_categories.organization, org_categories.detail_category
+    mp_target.year_month,
+    mp_target.organization,
+    mp_target.detail_category,
+    SUM(mp_source.monthly_recurring_profit) AS cumulative_actual,
+    -- 目標も累積
+    (SELECT SUM(target_amount)
+     FROM recurring_profit_target rpt
+     CROSS JOIN fiscal_year_starts fys
+     WHERE rpt.organization = mp_target.organization
+     AND rpt.detail_category = mp_target.detail_category
+     AND rpt.year_month >= fys.fiscal_start_date
+     AND rpt.year_month <= mp_target.year_month
+     AND fys.year_month = mp_target.year_month) AS cumulative_target
+  FROM monthly_profit mp_target
+  CROSS JOIN fiscal_year_starts fys
+  LEFT JOIN monthly_profit mp_source
+    ON mp_target.organization = mp_source.organization
+    AND mp_target.detail_category = mp_source.detail_category
+    AND mp_source.year_month >= fys.fiscal_start_date
+    AND mp_source.year_month <= mp_target.year_month
+  WHERE fys.year_month = mp_target.year_month
+  GROUP BY mp_target.year_month, mp_target.organization, mp_target.detail_category
 ),
 
 -- ============================================================
@@ -223,6 +247,7 @@ cumulative_recurring_profit AS (
 -- ============================================================
 expense_data AS (
   SELECT
+    oe.year_month,
     -- parent_organizationを追加（detail_categoryから導出）
     CASE
       WHEN oe.detail_category = 'ガラス工事計' THEN '工事営業部'
@@ -238,10 +263,18 @@ expense_data AS (
     ml.miscellaneous_loss_amount AS misc_loss,
     hoe.head_office_expense AS hq_expense
   FROM operating_expenses oe
-  LEFT JOIN non_operating_income noi ON oe.detail_category = noi.detail_category
-  LEFT JOIN non_operating_expenses noe ON oe.detail_category = noe.detail_category
-  LEFT JOIN miscellaneous_loss ml ON oe.detail_category = ml.detail_category
-  LEFT JOIN head_office_expenses hoe ON oe.detail_category = hoe.detail_category
+  LEFT JOIN non_operating_income noi
+    ON oe.year_month = noi.year_month
+    AND oe.detail_category = noi.detail_category
+  LEFT JOIN non_operating_expenses noe
+    ON oe.year_month = noe.year_month
+    AND oe.detail_category = noe.detail_category
+  LEFT JOIN miscellaneous_loss ml
+    ON oe.year_month = ml.year_month
+    AND oe.detail_category = ml.detail_category
+  LEFT JOIN head_office_expenses hoe
+    ON oe.year_month = hoe.year_month
+    AND oe.detail_category = hoe.detail_category
 ),
 
 
@@ -250,8 +283,9 @@ expense_data AS (
 -- ============================================================
 consolidated_metrics AS (
   SELECT
-    sa.organization,
-    sa.detail_category,
+    ac.year_month,
+    ac.organization,
+    ac.detail_category,
 
     -- ========== 売上高 ==========
     sa.sales_amount AS sales_actual,  -- 本年実績
@@ -293,27 +327,37 @@ consolidated_metrics AS (
     CAST(NULL AS FLOAT64) AS recurring_profit_actual,
     rpt.target_amount AS recurring_profit_target
 
-  FROM sales_actual sa
+  FROM all_combinations ac
+  LEFT JOIN sales_actual sa
+    ON ac.year_month = sa.year_month
+    AND ac.organization = sa.organization
+    AND ac.detail_category = sa.detail_category
   LEFT JOIN sales_actual_prev_year sa_prev
-    ON sa.organization = sa_prev.organization
-    AND sa.detail_category = sa_prev.detail_category
+    ON ac.year_month = sa_prev.year_month
+    AND ac.organization = sa_prev.organization
+    AND ac.detail_category = sa_prev.detail_category
   LEFT JOIN sales_target st_sales
-    ON sa.organization = st_sales.organization
-    AND sa.detail_category = st_sales.detail_category
+    ON ac.year_month = st_sales.year_month
+    AND ac.organization = st_sales.organization
+    AND ac.detail_category = st_sales.detail_category
     AND st_sales.metric_type = 'sales'
   LEFT JOIN sales_target st_gp
-    ON sa.organization = st_gp.organization
-    AND sa.detail_category = st_gp.detail_category
+    ON ac.year_month = st_gp.year_month
+    AND ac.organization = st_gp.organization
+    AND ac.detail_category = st_gp.detail_category
     AND st_gp.metric_type = 'gross_profit'
   LEFT JOIN recurring_profit_target rpt
-    ON sa.organization = rpt.organization
-    AND sa.detail_category = rpt.detail_category
+    ON ac.year_month = rpt.year_month
+    AND ac.organization = rpt.organization
+    AND ac.detail_category = rpt.detail_category
   LEFT JOIN operating_expenses_target oet
-    ON sa.organization = oet.organization
-    AND sa.detail_category = oet.detail_category
+    ON ac.year_month = oet.year_month
+    AND ac.organization = oet.organization
+    AND ac.detail_category = oet.detail_category
   LEFT JOIN operating_income_target oit
-    ON sa.organization = oit.organization
-    AND sa.detail_category = oit.detail_category
+    ON ac.year_month = oit.year_month
+    AND ac.organization = oit.organization
+    AND ac.detail_category = oit.detail_category
 ),
 
 
@@ -329,6 +373,7 @@ aggregated_metrics AS (
 
   -- 中間レベル（ガラス工事計 = 佐々木+岡本+小笠原+高石+浅井）
   SELECT
+    cm.year_month,
     cm.organization,
     'ガラス工事計' AS detail_category,
     -- ========== 売上・粗利は個人データを集計 ==========
@@ -343,13 +388,11 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから直接取得 ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    (SELECT target_amount FROM operating_expenses_target
-     WHERE organization = '工事営業部' AND detail_category = 'ガラス工事計') AS operating_expense_target,
+    oet_glass.target_amount AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     -- 営業利益の再計算
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    (SELECT target_amount FROM operating_income_target
-     WHERE organization = '工事営業部' AND detail_category = 'ガラス工事計') AS operating_income_target,
+    oit_glass.target_amount AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     -- 営業外収入
     MAX(ed.rebate_income) AS rebate_income,
@@ -369,20 +412,33 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    (SELECT target_amount FROM recurring_profit_target
-     WHERE organization = '工事営業部' AND detail_category = 'ガラス工事計') AS recurring_profit_target
+    rpt_glass.target_amount AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
-    ON cm.organization = ed.parent_organization
+    ON cm.year_month = ed.year_month
+    AND cm.organization = ed.parent_organization
     AND ed.detail_category = 'ガラス工事計'
+  LEFT JOIN operating_expenses_target oet_glass
+    ON cm.year_month = oet_glass.year_month
+    AND oet_glass.organization = '工事営業部'
+    AND oet_glass.detail_category = 'ガラス工事計'
+  LEFT JOIN operating_income_target oit_glass
+    ON cm.year_month = oit_glass.year_month
+    AND oit_glass.organization = '工事営業部'
+    AND oit_glass.detail_category = 'ガラス工事計'
+  LEFT JOIN recurring_profit_target rpt_glass
+    ON cm.year_month = rpt_glass.year_month
+    AND rpt_glass.organization = '工事営業部'
+    AND rpt_glass.detail_category = 'ガラス工事計'
   WHERE cm.organization = '工事営業部'
     AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
-  GROUP BY cm.organization
+  GROUP BY cm.year_month, cm.organization, oet_glass.target_amount, oit_glass.target_amount, rpt_glass.target_amount
 
   UNION ALL
 
   -- 組織計レベル（工事営業部計）
   SELECT
+    cm.year_month,
     cm.organization,
     CONCAT(cm.organization, '計') AS detail_category,
     -- ========== 売上・粗利は個人/部門データを集計 ==========
@@ -397,12 +453,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（ガラス工事計 + 山本（改装）） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    (SELECT target_amount FROM operating_expenses_target
-     WHERE organization = '工事営業部' AND detail_category = '工事営業部計') AS operating_expense_target,
+    oet_eng.target_amount AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    (SELECT target_amount FROM operating_income_target
-     WHERE organization = '工事営業部' AND detail_category = '工事営業部計') AS operating_income_target,
+    oit_eng.target_amount AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -418,11 +472,11 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    (SELECT target_amount FROM recurring_profit_target
-     WHERE organization = '工事営業部' AND detail_category = '工事営業部計') AS recurring_profit_target
+    rpt_eng.target_amount AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN (
     SELECT
+      year_month,
       parent_organization,
       SUM(COALESCE(operating_expense, 0)) AS operating_expense,
       SUM(COALESCE(rebate_income, 0)) AS rebate_income,
@@ -432,16 +486,30 @@ aggregated_metrics AS (
       SUM(COALESCE(hq_expense, 0)) AS hq_expense
     FROM expense_data
     WHERE detail_category IN ('ガラス工事計', '山本（改装）')
-    GROUP BY parent_organization
+    GROUP BY year_month, parent_organization
   ) ed
-    ON cm.organization = ed.parent_organization
+    ON cm.year_month = ed.year_month
+    AND cm.organization = ed.parent_organization
+  LEFT JOIN operating_expenses_target oet_eng
+    ON cm.year_month = oet_eng.year_month
+    AND oet_eng.organization = '工事営業部'
+    AND oet_eng.detail_category = '工事営業部計'
+  LEFT JOIN operating_income_target oit_eng
+    ON cm.year_month = oit_eng.year_month
+    AND oit_eng.organization = '工事営業部'
+    AND oit_eng.detail_category = '工事営業部計'
+  LEFT JOIN recurring_profit_target rpt_eng
+    ON cm.year_month = rpt_eng.year_month
+    AND rpt_eng.organization = '工事営業部'
+    AND rpt_eng.detail_category = '工事営業部計'
   WHERE cm.organization = '工事営業部'
-  GROUP BY cm.organization
+  GROUP BY cm.year_month, cm.organization, oet_eng.target_amount, oit_eng.target_amount, rpt_eng.target_amount
 
   UNION ALL
 
   -- 組織計レベル（硝子建材営業部計）
   SELECT
+    cm.year_month,
     cm.organization,
     CONCAT(cm.organization, '計') AS detail_category,
     -- ========== 売上・粗利は個人/部門データを集計 ==========
@@ -456,12 +524,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから取得（硝子建材営業部のみ） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    (SELECT target_amount FROM operating_expenses_target
-     WHERE organization = '硝子建材営業部' AND detail_category = '硝子建材営業部計') AS operating_expense_target,
+    oet_build.target_amount AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    (SELECT target_amount FROM operating_income_target
-     WHERE organization = '硝子建材営業部' AND detail_category = '硝子建材営業部計') AS operating_income_target,
+    oit_build.target_amount AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -477,19 +543,32 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    (SELECT target_amount FROM recurring_profit_target
-     WHERE organization = '硝子建材営業部' AND detail_category = '硝子建材営業部計') AS recurring_profit_target
+    rpt_build.target_amount AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
-    ON cm.organization = ed.parent_organization
+    ON cm.year_month = ed.year_month
+    AND cm.organization = ed.parent_organization
     AND ed.detail_category = '硝子建材営業部'
+  LEFT JOIN operating_expenses_target oet_build
+    ON cm.year_month = oet_build.year_month
+    AND oet_build.organization = '硝子建材営業部'
+    AND oet_build.detail_category = '硝子建材営業部計'
+  LEFT JOIN operating_income_target oit_build
+    ON cm.year_month = oit_build.year_month
+    AND oit_build.organization = '硝子建材営業部'
+    AND oit_build.detail_category = '硝子建材営業部計'
+  LEFT JOIN recurring_profit_target rpt_build
+    ON cm.year_month = rpt_build.year_month
+    AND rpt_build.organization = '硝子建材営業部'
+    AND rpt_build.detail_category = '硝子建材営業部計'
   WHERE cm.organization = '硝子建材営業部'
-  GROUP BY cm.organization
+  GROUP BY cm.year_month, cm.organization, oet_build.target_amount, oit_build.target_amount, rpt_build.target_amount
 
   UNION ALL
 
   -- 最上位レベル（東京支店計）
   SELECT
+    cm.year_month,
     '東京支店' AS organization,
     '東京支店計' AS detail_category,
     -- ========== 売上・粗利は個人/部門データを集計 ==========
@@ -504,12 +583,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（全組織の合計） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    (SELECT target_amount FROM operating_expenses_target
-     WHERE organization = '東京支店' AND detail_category = '東京支店計') AS operating_expense_target,
+    oet_tokyo.target_amount AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    (SELECT target_amount FROM operating_income_target
-     WHERE organization = '東京支店' AND detail_category = '東京支店計') AS operating_income_target,
+    oit_tokyo.target_amount AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -525,11 +602,11 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    (SELECT target_amount FROM recurring_profit_target
-     WHERE organization = '東京支店' AND detail_category = '東京支店計') AS recurring_profit_target
+    rpt_tokyo.target_amount AS recurring_profit_target
   FROM consolidated_metrics cm
-  CROSS JOIN (
+  LEFT JOIN (
     SELECT
+      year_month,
       SUM(COALESCE(operating_expense, 0)) AS operating_expense,
       SUM(COALESCE(rebate_income, 0)) AS rebate_income,
       SUM(COALESCE(other_income, 0)) AS other_income,
@@ -537,7 +614,21 @@ aggregated_metrics AS (
       SUM(COALESCE(misc_loss, 0)) AS misc_loss,
       SUM(COALESCE(hq_expense, 0)) AS hq_expense
     FROM expense_data
-  ) ed
+    GROUP BY year_month
+  ) ed ON cm.year_month = ed.year_month
+  LEFT JOIN operating_expenses_target oet_tokyo
+    ON cm.year_month = oet_tokyo.year_month
+    AND oet_tokyo.organization = '東京支店'
+    AND oet_tokyo.detail_category = '東京支店計'
+  LEFT JOIN operating_income_target oit_tokyo
+    ON cm.year_month = oit_tokyo.year_month
+    AND oit_tokyo.organization = '東京支店'
+    AND oit_tokyo.detail_category = '東京支店計'
+  LEFT JOIN recurring_profit_target rpt_tokyo
+    ON cm.year_month = rpt_tokyo.year_month
+    AND rpt_tokyo.organization = '東京支店'
+    AND rpt_tokyo.detail_category = '東京支店計'
+  GROUP BY cm.year_month, oet_tokyo.target_amount, oit_tokyo.target_amount, rpt_tokyo.target_amount
 ),
 
 -- ============================================================
@@ -546,7 +637,7 @@ aggregated_metrics AS (
 vertical_format AS (
   -- 売上高: 前年実績
   SELECT
-    DATE('2025-09-01') AS date,
+    year_month AS date,
     '売上高' AS main_category,
     1 AS main_category_sort_order,
     '前年実績' AS secondary_category,
@@ -577,7 +668,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上高',
     1,
     '本年目標',
@@ -608,7 +699,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上高',
     1,
     '本年実績',
@@ -639,7 +730,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 前年比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上高',
     1,
     '前年比(%)',
@@ -673,7 +764,7 @@ vertical_format AS (
   UNION ALL
   -- 売上高: 目標比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上高',
     1,
     '目標比(%)',
@@ -709,7 +800,7 @@ vertical_format AS (
 
   -- 売上総利益: 前年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益',
     2,
     '前年実績',
@@ -740,7 +831,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益',
     2,
     '本年目標',
@@ -771,7 +862,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益',
     2,
     '本年実績',
@@ -802,7 +893,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 前年比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益',
     2,
     '前年比(%)',
@@ -836,7 +927,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益: 目標比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益',
     2,
     '目標比(%)',
@@ -872,7 +963,7 @@ vertical_format AS (
 
   -- 売上総利益率: 前年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益率',
     3,
     '前年実績',
@@ -903,7 +994,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益率',
     3,
     '本年目標',
@@ -934,7 +1025,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益率',
     3,
     '本年実績',
@@ -965,7 +1056,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 前年比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益率',
     3,
     '前年比(%)',
@@ -999,7 +1090,7 @@ vertical_format AS (
   UNION ALL
   -- 売上総利益率: 目標比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '売上総利益率',
     3,
     '目標比(%)',
@@ -1035,7 +1126,7 @@ vertical_format AS (
 
   -- 営業経費: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業経費',
     4,
     '本年目標',
@@ -1067,7 +1158,7 @@ vertical_format AS (
   UNION ALL
   -- 営業経費: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業経費',
     4,
     '本年実績',
@@ -1098,7 +1189,7 @@ vertical_format AS (
   UNION ALL
   -- 営業経費: 目標比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業経費',
     4,
     '目標比(%)',
@@ -1134,7 +1225,7 @@ vertical_format AS (
 
   -- 営業利益: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業利益',
     5,
     '本年目標',
@@ -1166,7 +1257,7 @@ vertical_format AS (
   UNION ALL
   -- 営業利益: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業利益',
     5,
     '本年実績',
@@ -1197,7 +1288,7 @@ vertical_format AS (
   UNION ALL
   -- 営業利益: 目標比
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業利益',
     5,
     '目標比(%)',
@@ -1233,7 +1324,7 @@ vertical_format AS (
 
   -- 営業外収入（リベート）: 本年実績のみ
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業外収入（リベート）',
     6,
     '本年実績',
@@ -1266,7 +1357,7 @@ vertical_format AS (
 
   -- 営業外収入（その他）: 本年実績のみ
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業外収入（その他）',
     7,
     '本年実績',
@@ -1299,7 +1390,7 @@ vertical_format AS (
 
   -- 営業外費用（社内利息A・B）: 本年実績のみ
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業外費用（社内利息A・B）',
     8,
     '本年実績',
@@ -1332,7 +1423,7 @@ vertical_format AS (
 
   -- 営業外費用（雑損失）: 本年実績のみ
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '営業外費用（雑損失）',
     9,
     '本年実績',
@@ -1365,7 +1456,7 @@ vertical_format AS (
 
   -- 本店管理費: 本年実績のみ
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '本店管理費',
     10,
     '本年実績',
@@ -1398,7 +1489,7 @@ vertical_format AS (
 
   -- 経常利益: 本年目標
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '経常利益',
     11,
     '本年目標',
@@ -1429,7 +1520,7 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 本年実績
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '経常利益',
     11,
     '本年実績',
@@ -1460,7 +1551,7 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 累積本年目標（現状は1ヶ月分のみなので当月目標と同じ）
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '経常利益',
     11,
     '累積本年目標',
@@ -1492,7 +1583,7 @@ vertical_format AS (
   UNION ALL
   -- 経常利益: 累積本年実績（現状は1ヶ月分のみなので当月実績と同じ）
   SELECT
-    DATE('2025-09-01'),
+    year_month,
     '経常利益',
     11,
     '累積本年実績',

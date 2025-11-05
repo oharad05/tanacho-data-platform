@@ -17,6 +17,7 @@ DWH: 本店管理費
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` AS
 WITH aggregated AS (
   SELECT
+    sales_accounting_period AS year_month,
     -- ガラス工事計: 工事営業１課 + 業務課
     SUM(
       CASE
@@ -41,11 +42,11 @@ WITH aggregated AS (
       END
     ) AS glass_sales_expense
   FROM `data-platform-prod-475201.corporate_data.department_summary`
-  WHERE sales_accounting_period = DATE('2025-09-01')
+  GROUP BY year_month
 )
 
-SELECT DATE('2025-09-01') AS year_month, 'ガラス工事計' AS detail_category, glass_construction_expense AS head_office_expense FROM aggregated
+SELECT year_month, 'ガラス工事計' AS detail_category, glass_construction_expense AS head_office_expense FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '山本（改装）', yamamoto_expense FROM aggregated
+SELECT year_month, '山本（改装）', yamamoto_expense FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '硝子建材営業部', glass_sales_expense FROM aggregated;
+SELECT year_month, '硝子建材営業部', glass_sales_expense FROM aggregated;

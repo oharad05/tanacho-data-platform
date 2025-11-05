@@ -18,6 +18,7 @@ DWH: 営業外収入（リベート・その他）
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.non_operating_income` AS
 WITH aggregated AS (
   SELECT
+    DATE(accounting_month) AS year_month,
     -- ガラス工事計: 工事営業１課(11) + 業務課(18)
     SUM(
       CASE
@@ -66,11 +67,11 @@ WITH aggregated AS (
       END
     ) AS glass_sales_other
   FROM `data-platform-prod-475201.corporate_data.ledger_income`
-  WHERE DATE(accounting_month) = DATE('2025-09-01')
+  GROUP BY year_month
 )
 
-SELECT DATE('2025-09-01') AS year_month, 'ガラス工事計' AS detail_category, glass_construction_rebate AS rebate_income, glass_construction_other AS other_non_operating_income FROM aggregated
+SELECT year_month, 'ガラス工事計' AS detail_category, glass_construction_rebate AS rebate_income, glass_construction_other AS other_non_operating_income FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '山本（改装）', yamamoto_rebate, yamamoto_other FROM aggregated
+SELECT year_month, '山本（改装）', yamamoto_rebate, yamamoto_other FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '硝子建材営業部', glass_sales_rebate, glass_sales_other FROM aggregated;
+SELECT year_month, '硝子建材営業部', glass_sales_rebate, glass_sales_other FROM aggregated;

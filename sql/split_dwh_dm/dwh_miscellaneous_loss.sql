@@ -17,6 +17,7 @@ DWH: 営業外費用（雑損失）
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` AS
 WITH aggregated AS (
   SELECT
+    DATE(accounting_month) AS year_month,
     -- ガラス工事計: 工事営業１課(11) + 業務課(18)
     SUM(
       CASE
@@ -41,11 +42,11 @@ WITH aggregated AS (
       END
     ) AS glass_sales_loss
   FROM `data-platform-prod-475201.corporate_data.ledger_loss`
-  WHERE DATE(accounting_month) = DATE('2025-09-01')
+  GROUP BY year_month
 )
 
-SELECT DATE('2025-09-01') AS year_month, 'ガラス工事計' AS detail_category, glass_construction_loss AS miscellaneous_loss_amount FROM aggregated
+SELECT year_month, 'ガラス工事計' AS detail_category, glass_construction_loss AS miscellaneous_loss_amount FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '山本（改装）', yamamoto_loss FROM aggregated
+SELECT year_month, '山本（改装）', yamamoto_loss FROM aggregated
 UNION ALL
-SELECT DATE('2025-09-01'), '硝子建材営業部', glass_sales_loss FROM aggregated;
+SELECT year_month, '硝子建材営業部', glass_sales_loss FROM aggregated;

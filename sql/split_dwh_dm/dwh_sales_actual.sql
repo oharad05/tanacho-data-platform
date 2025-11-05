@@ -17,7 +17,7 @@ DWH: 売上高・粗利実績（本年実績）
 
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` AS
 SELECT
-  DATE('2025-09-01') AS year_month,
+  sales_accounting_period AS year_month,
   -- 組織識別
   CASE
     WHEN branch_code = 11 THEN '工事営業部'
@@ -48,8 +48,8 @@ SELECT
 FROM
   `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
 WHERE
-  sales_accounting_period = DATE('2025-09-01')
-  AND branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
+  branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
 GROUP BY
+  year_month,
   organization,
   detail_category;

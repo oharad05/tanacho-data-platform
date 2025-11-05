@@ -39,7 +39,6 @@ WITH profit_plan AS (
     sash_finished_products,
     others
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
-  WHERE period = DATE('2025-09-01')
 )
 
 -- 営業経費目標
