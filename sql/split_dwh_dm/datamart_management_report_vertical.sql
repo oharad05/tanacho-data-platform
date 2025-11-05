@@ -141,17 +141,18 @@ operating_income_target AS (
 -- ============================================================
 -- 全組織×カテゴリ×月の組み合わせを生成
 -- 売上関連テーブルのみから組み合わせを生成
--- （target系テーブルは集約レベルが異なるため除外）
+-- 集計レベル（XX計）は除外して、個人/部門レベルのみを対象とする
 -- ============================================================
 all_combinations AS (
   SELECT DISTINCT year_month, organization, detail_category
   FROM (
     SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
-    UNION DISTINCT
     SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+    UNION DISTINCT
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
   )
+  WHERE detail_category NOT LIKE '%計'  -- 集計レベルを除外
 ),
 
 -- ============================================================
@@ -583,10 +584,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（全組織の合計） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    oet_tokyo.target_amount AS operating_expense_target,
+    MAX(oet_tokyo.target_amount) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    oit_tokyo.target_amount AS operating_income_target,
+    MAX(oit_tokyo.target_amount) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -602,7 +603,7 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    rpt_tokyo.target_amount AS recurring_profit_target
+    MAX(rpt_tokyo.target_amount) AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN (
     SELECT
@@ -628,7 +629,7 @@ aggregated_metrics AS (
     ON cm.year_month = rpt_tokyo.year_month
     AND rpt_tokyo.organization = '東京支店'
     AND rpt_tokyo.detail_category = '東京支店計'
-  GROUP BY cm.year_month, oet_tokyo.target_amount, oit_tokyo.target_amount, rpt_tokyo.target_amount
+  GROUP BY cm.year_month
 ),
 
 -- ============================================================
@@ -1493,7 +1494,7 @@ vertical_format AS (
     '経常利益',
     11,
     '本年目標',
-    2,
+    1,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1524,7 +1525,7 @@ vertical_format AS (
     '経常利益',
     11,
     '本年実績',
-    3,
+    2,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1555,7 +1556,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年目標',
-    4,
+    3,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1587,7 +1588,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年実績',
-    5,
+    4,
     '東京支店',
     detail_category,
     CASE detail_category

@@ -144,14 +144,14 @@ sales_actual_prev_year AS (
 
       ELSE '未分類'
     END AS detail_category,
-    -- 金額（円単位）
-    SUM(sales_actual) AS sales_amount,
-    SUM(gross_profit_actual) AS gross_profit_amount
+    -- 金額（円単位）- 前年実績カラムを使用
+    SUM(prev_year_sales_actual) AS sales_amount,
+    SUM(prev_year_gross_profit_actual) AS gross_profit_amount
 
   FROM
     `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
   WHERE
-    sales_accounting_period = DATE('2024-09-01')  -- 前年同月のデータを取得
+    sales_accounting_period = DATE('2025-09-01')  -- 当月データの前年実績カラムを取得
     AND branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
   GROUP BY
     organization,
