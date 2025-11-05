@@ -24,7 +24,7 @@ WITH
 -- 山本（改装）の社内利息計算（全期間、2ヶ月前のデータを使用）
 yamamoto_interest AS (
   SELECT
-    DATE_ADD(bb.sales_month, INTERVAL 2 MONTH) AS year_month,
+    DATE_ADD(bb.sales_month, INTERVAL 1 MONTH) AS year_month,
     '山本（改装）' AS detail_category,
     -- 売掛残高 × 利率
     bb.current_month_sales_balance * ii.interest_rate AS interest_expense
@@ -36,7 +36,8 @@ yamamoto_interest AS (
   WHERE
     bb.branch_code = 13  -- 改修課
     AND ii.branch = '東京支店'
-    AND ii.category = '売掛金'
+    AND ii.category = '社内利息（A）'
+    AND ii.breakdown = '売掛金'
 ),
 
 -- 部門集計表からの社内利息（全期間）

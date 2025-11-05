@@ -6,6 +6,22 @@ Google Drive → GCS → BigQuery → Looker Studio のデータパイプライ�
 
 Google Drive上の月次データをGCSに取り込み、BigQueryに連携し、Looker Studioでダッシュボード表示するためのパイプラインです。
 
+## 用語定義
+
+**重要**: 以下の用語は全てのSQL実装で統一して使用してください。
+
+- **実行日**: レポート作成対象の翌月
+  - 例: 9/1のレポートの場合、実行日 = 2025年10月
+- **作成月**: 実行日の前月（=全ての数字が集まっている最新の月）
+  - 例: 9/1のレポートの場合、作成月 = 2025年9月
+
+### 営業外費用（社内利息）の計算における適用例
+
+9/1の経営資料の場合:
+- **値A（売掛残高）**: 実行日（10月）の2か月前 = **2025年8月**の売掛残高
+- **値B（利率）**: 作成月（9月）の前月 = **2025年8月**の利率
+- 計算: 値A × 値B = 8月の売掛残高 × 8月の利率
+
 ## アーキテクチャ
 
 ```
@@ -23,36 +39,94 @@ BigQuery
 Looker Studio (ダッシュボード)
 ```
 
+## 実行手順
+
+### 処理フロー概要
+
+```
+1. Google Drive配置（手動・先方作業）
+   ↓
+2. Cloud Run: Drive → GCS (raw/)
+   サービス: drive-to-gcs (run_service/main.py)
+   トリガー: Pub/Sub topic 'drive-monthly'
+   ↓
+3. Cloud Run: raw/ → proceed/ + BigQuery連携
+   サービス: gcs-to-bq (gcs_to_bq_service/main.py)
+   トリガー: Pub/Sub topic 'transform-trigger'
+   処理内容:
+     - Excel → CSV変換 (raw/ → proceed/)
+     - CSV → BigQuery読み込み (proceed/ → corporate_data)
+   ↓
+4. DWHテーブル更新（手動）
+   スクリプト: sql/scripts/update_dwh.sh
+   ↓
+5. データマート更新（手動）
+   スクリプト: sql/scripts/update_datamart.sh
+   ↓
+6. Looker Studio可視化
+```
+
+### 自動化範囲
+
+| ステップ | 処理内容 | 自動化 | トリガー方法 |
+|---------|---------|--------|-------------|
+| 1 | Drive配置 | ✗ 手動 | 先方作業 |
+| 2 | Drive→GCS(raw/) | ✓ 自動 | Pub/Sub: drive-monthly |
+| 3 | raw/→proceed/ + BQ連携 | ✓ 自動 | Pub/Sub: transform-trigger |
+| 4 | DWH作成 | ✗ 手動 | update_dwh.sh |
+| 5 | DataMart作成 | ✗ 手動 | update_datamart.sh |
+| 6 | Looker Studio | - | 手動参照 |
+
+### インフラ構成
+
+**Pub/Sub**:
+- Topic: `drive-monthly`
+  - Subscription: `drive-monthly-sub` → Cloud Run `drive-to-gcs` (push)
+- Topic: `transform-trigger`
+  - Subscription: `transform-trigger-sub` → Cloud Run `gcs-to-bq` (push)
+
+**Cloud Run Services**:
+- `drive-to-gcs` (asia-northeast1) - run_service/main.py
+- `gcs-to-bq` (asia-northeast1) - gcs_to_bq_service/main.py
+
+**Cloud Scheduler**: なし（DWH・DataMart更新は手動実行）
+
 ## 月次データ更新手順
 
-### 1. Drive → GCS 同期
+### 1. Drive → GCS 同期（自動）
 
+先方がGoogle Driveにファイルを配置すると、Pub/Sub経由で自動的に処理されます。
+
+手動実行する場合:
 ```bash
 python sync_drive_to_gcs.py {YYYYMM}
 ```
 
 例: `python sync_drive_to_gcs.py 202509`
 
-### 2. raw → proceed 変換（Excel → CSV）
+### 2. raw → proceed 変換 + BigQuery連携（自動）
 
+ステップ1の完了後、Pub/Sub経由で自動的に処理されます。
+
+手動実行する場合:
 ```bash
 python transform_raw_to_proceed.py {YYYYMM}
-```
-
-### 3. proceed → BigQuery ロード
-
-```bash
 python load_to_bigquery.py {YYYYMM} --replace
 ```
 
-### 4. マスターデータ更新（初回のみ必要）
+### 3. マスターデータ更新（初回のみ必要）
 
 ```bash
 bq query --use_legacy_sql=false < sql/update_ms_department_category_group_name.sql
 ```
 
-### 5. DWHテーブル更新
+### 4. DWHテーブル更新（手動実行必須）
 
+```bash
+bash sql/scripts/update_dwh.sh
+```
+
+または個別実行:
 ```bash
 cd sql/split_dwh_dm
 
@@ -60,7 +134,7 @@ cd sql/split_dwh_dm
 for file in dwh_*.sql; do
   table_name=$(echo $file | sed 's/dwh_//' | sed 's/.sql//')
   echo "Processing: $table_name"
-  
+
   # TRUNCATE & INSERT方式で更新
   {
     grep "^DECLARE" $file 2>/dev/null || echo ""
@@ -73,8 +147,19 @@ for file in dwh_*.sql; do
 done
 ```
 
-### 6. データマート更新
+**更新対象テーブル（11個）**:
+- dwh_sales_actual, dwh_sales_actual_prev_year, dwh_sales_target
+- operating_expenses, non_operating_income, non_operating_expenses
+- miscellaneous_loss, head_office_expenses, dwh_recurring_profit_target
+- operating_expenses_target, operating_income_target
 
+### 5. データマート更新（手動実行必須）
+
+```bash
+bash sql/scripts/update_datamart.sh
+```
+
+または個別実行:
 ```bash
 cd sql/split_dwh_dm
 
@@ -82,12 +167,15 @@ cd sql/split_dwh_dm
 {
   grep "^DECLARE" datamart_management_report_vertical.sql 2>/dev/null || echo ""
   echo ""
-  echo "TRUNCATE TABLE \`data-platform-prod-475201.corporate_data_dm.management_documents_current_month_tbl\`;"
+  echo "TRUNCATE TABLE \`data-platform-prod-475201.corporate_data_dm.management_documents_all_period\`;"
   echo ""
-  echo "INSERT INTO \`data-platform-prod-475201.corporate_data_dm.management_documents_current_month_tbl\`"
+  echo "INSERT INTO \`data-platform-prod-475201.corporate_data_dm.management_documents_all_period\`"
   grep -v "^DECLARE" datamart_management_report_vertical.sql
 } | bq query --use_legacy_sql=false
 ```
+
+**更新対象テーブル**:
+- management_documents_all_period
 
 ## 重要な注意事項
 
