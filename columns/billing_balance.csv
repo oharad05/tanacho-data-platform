@@ -1,7 +1,0 @@
-jp_name,en_name,type,description
-売上月度,sales_month,DATE,売上月度
-営業所CD,branch_code,INT64,営業所CD
-営業所名,branch_name,STRING,営業所名
-当月売掛残高,current_month_accounts_receivable,INT64,当月売掛残高
-未落手形残高,unsettled_bill_balance,INT64,未落手形残高
-当月売上残高,current_month_sales_balance,INT64,当月売上残高

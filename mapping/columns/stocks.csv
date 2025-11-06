@@ -1,6 +1,0 @@
-jp_name,en_name,type,description
-支店,branch,STRING,支店
-部署,department,STRING,部署
-種別,category,STRING,種別
-金額,amount,INT64,金額
-年月,year_month,DATE,年月

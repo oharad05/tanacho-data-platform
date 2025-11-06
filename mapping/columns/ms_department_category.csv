@@ -1,4 +1,0 @@
-jp_name,en_name,type,description
-department_category_code,department_category_code,INT64,部門カテゴリコード
-department_category_code_name,department_category_code_name,STRING,部門カテゴリコード名
-group_name,group_name,STRING,集計グループ名

@@ -1,6 +1,0 @@
-jp_name,en_name,type,description
-支店,branch,STRING,支店
-部署,department,STRING,部署
-種別,category,STRING,種別
-比率,ratio,FLOAT64,比率
-年月,year_month,DATE,年月

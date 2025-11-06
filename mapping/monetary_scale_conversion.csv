@@ -1,2 +1,0 @@
-file_name,condition_column_name,condition_column_value,object_column_name,convert_value
-profit_plan_term,item,"['売上高','売上総利益','営業経費','営業利益','経常利益']","['tokyo_branch_total','construction_sales_department_total','company_sasaki','company_asai','company_ogasawara','company_takaishi','glass_construction_total','company_yamamoto','glass_building_material_sales_department','glass_construction','building_sash','glass_sales','sash_sales','sash_finished_products','others']",1000

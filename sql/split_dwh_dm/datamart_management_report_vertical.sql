@@ -1621,26 +1621,16 @@ SELECT
   main_category_sort_order,
   -- secondary_categoryに(千円)または(%)を付加
   CASE
-    -- 売上総利益率の前年実績・本年目標・本年実績に(%)を付加
-    WHEN main_category = '売上総利益率'
-      AND secondary_category IN ('前年実績', '本年目標', '本年実績')
-      THEN CONCAT(secondary_category, '(%)')
-    -- その他の金額項目に(千円)を付加
-    WHEN main_category != '売上総利益率'
-      AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+    -- 金額項目に(千円)を付加
+    WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
       THEN CONCAT(secondary_category, '(千円)')
     ELSE secondary_category
   END AS secondary_category,
   -- secondary_category_graphnameから(千円)と(%)を除外
   REGEXP_REPLACE(
     CASE
-      -- 売上総利益率の前年実績・本年目標・本年実績に(%)を付加
-      WHEN main_category = '売上総利益率'
-        AND secondary_category IN ('前年実績', '本年目標', '本年実績')
-        THEN CONCAT(secondary_category, '(%)')
-      -- その他の金額項目に(千円)を付加
-      WHEN main_category != '売上総利益率'
-        AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+      -- 金額項目に(千円)を付加
+      WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
         THEN CONCAT(secondary_category, '(千円)')
       ELSE secondary_category
     END,

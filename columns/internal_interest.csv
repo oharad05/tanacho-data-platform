@@ -1,8 +1,0 @@
-jp_name,en_name,type,description
-支店,branch,STRING,支店
-分類,category,STRING,分類
-内訳,breakdown,STRING,内訳
-金額,amount,INT64,金額
-利率,interest_rate,NUMERIC,利率
-利息,interest,INT64,利息
-年月,year_month,DATE,年月
