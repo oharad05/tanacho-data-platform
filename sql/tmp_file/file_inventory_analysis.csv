@@ -1,0 +1,88 @@
+folder_1,folder_2,folder_3,file_name,purpose,usage_location,used_in_base_process,cloud_run_deployment,temporary_file,notes
+,,,CHANGELOG.md,変更履歴ドキュメント,ドキュメント,No,No,No,プロジェクト履歴管理
+,,,PREVENTION_PLAN.md,データ重複防止策ドキュメント,ドキュメント,No,No,No,運用改善提案書
+,,,README.md,メインドキュメント,ドキュメント,No,No,No,6ステップ処理フロー記載
+,,,check_excel_sheets.py,Excelシート確認ツール,開発・デバッグ,No,No,Yes,開発用・削除候補
+,,,debug_excel_read.py,Excel読込デバッグツール,開発・デバッグ,No,No,Yes,開発用・削除候補
+,,,test_csv_generation.py,CSV生成テストツール,開発・デバッグ,No,No,Yes,開発用・削除候補
+,,,test_drive_connection.py,Drive接続テストツール,開発・デバッグ,No,No,Yes,開発用・削除候補
+,,,test_bigquery_connection.py,BigQuery接続テストツール,開発・デバッグ,No,No,Yes,開発用・削除候補
+,,,sync_drive_to_gcs.py,Drive→GCS手動実行スクリプト,Drive→GCS,Yes,No,No,ローカル手動実行用・run_service/main.pyと重複
+,,,transform_raw_to_proceed.py,raw→proceed手動変換スクリプト,raw→proceed変換,Yes,No,No,ローカル手動実行用・gcs_to_bq_service/main.pyと重複
+,,,load_to_bigquery.py,BigQuery手動ロードスクリプト,BigQueryロード,Yes,No,No,ローカル手動実行用・gcs_to_bq_service/main.pyと重複
+,,,run_etl_profit_plan_term.py,profit_plan_term専用ETL,raw→proceed変換,No,No,Yes,特定テーブル用・削除候補
+,,,transform_profit_plan_term.py,profit_plan_term変換処理,raw→proceed変換,No,No,Yes,特定テーブル用・削除候補
+,,,create_dwh_tables.sql,DWHテーブル作成SQL,DWH作成,No,No,No,初回セットアップ用・既に実行済み
+,,,create_dm_table_wrapper.sql,DataMartテーブル作成SQL,DataMart作成,No,No,No,初回セットアップ用・既に実行済み
+,,,recreate_tables.sql,テーブル再作成SQL,DWH/DataMart作成,No,No,Yes,初回セットアップ用・既に実行済み
+,,,setup_instructions.md,セットアップ手順書,ドキュメント,No,No,No,初回構築用ドキュメント
+,,,transformation_proposal.md,変換処理提案書,ドキュメント,No,No,No,設計ドキュメント
+,,,memo.txt,メモファイル,ドキュメント,No,No,Yes,開発メモ・削除候補
+,,,profit_plan_term_schema.json,profit_plan_termスキーマ定義,設定ファイル,No,No,Yes,スキーマ参照用・削除候補
+,,,looker-bq-connection.json,Looker Studio接続情報,設定ファイル,Yes,No,No,Looker Studio接続設定
+,,,current_dir.zip,プロジェクトアーカイブ,バックアップ,No,No,Yes,削除候補
+run_service,,,main.py,Drive→GCS同期処理,Drive→GCS,Yes,Yes (drive-to-gcs),No,Pub/Sub経由で自動実行・Cloud Run本体
+run_service,,,Dockerfile,drive-to-gcsコンテナ定義,Cloud Runデプロイ,Yes,Yes (drive-to-gcs),No,Dockerビルド設定
+run_service,,,requirements.txt,drive-to-gcs依存パッケージ,Cloud Runデプロイ,Yes,Yes (drive-to-gcs),No,Python依存関係
+run_service,,,Procfile,Heroku用設定ファイル,未使用,No,No,Yes,削除候補（Herokuは使用していない）
+run_service,,,runtime.txt,Python実行環境指定,未使用,No,No,Yes,削除候補（Herokuは使用していない）
+gcs_to_bq_service,,,main.py,raw→proceed変換+BigQueryロード,raw→proceed+BigQueryロード,Yes,Yes (gcs-to-bq),No,Pub/Sub経由で自動実行・Cloud Run本体
+gcs_to_bq_service,,,Dockerfile,gcs-to-bqコンテナ定義,Cloud Runデプロイ,Yes,Yes (gcs-to-bq),No,Dockerビルド設定
+gcs_to_bq_service,,,requirements.txt,gcs-to-bq依存パッケージ,Cloud Runデプロイ,Yes,Yes (gcs-to-bq),No,Python依存関係
+gcs_to_bq_service,,,my_memo.txt,開発メモ,ドキュメント,No,No,Yes,削除候補
+function,,,main.py,Cloud Functions用処理,未使用,No,No,Yes,削除候補（Cloud Runに統一済み）
+function,,,requirements.txt,Cloud Functions依存パッケージ,未使用,No,No,Yes,削除候補
+columns,,,sales_target_and_achievements.csv,売上目標実績カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,billing_balance.csv,請求残高カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,ledger_income.csv,雑収入カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,department_summary.csv,部門集計カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,internal_interest.csv,社内金利カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,profit_plan_term.csv,損益5期目標カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,ledger_loss.csv,雑損失カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,stocks.csv,在庫カラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,ms_allocation_ratio.csv,案分比率マスタカラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+columns,,,ms_department_category.csv,部門カテゴリマスタカラム定義,raw→proceed変換,Yes,No,Yes,旧場所・config/columnsに移行済み・削除候補
+config,columns,,sales_target_and_achievements.csv,売上目標実績カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,billing_balance.csv,請求残高カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,ledger_income.csv,雑収入カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,department_summary.csv,部門集計カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,internal_interest.csv,社内金利カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,profit_plan_term.csv,損益5期目標カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,profit_plan_term_fixed.csv,損益5期目標カラム定義（修正版）,未使用,No,No,Yes,削除候補
+config,columns,,ledger_loss.csv,雑損失カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,stocks.csv,在庫カラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,ms_allocation_ratio.csv,案分比率マスタカラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,columns,,ms_department_category.csv,部門カテゴリマスタカラム定義,raw→proceed変換,Yes,Yes (gcs-to-bq),No,gcs_to_bq_serviceで参照・現行版
+config,mapping,,mapping_files.csv,テーブル名マッピング定義,Drive→GCS・BigQueryロード,Yes,Yes (drive-to-gcs・gcs-to-bq),No,日本語→英語テーブル名変換
+config,mapping,,monetary_scale_conversion.csv,金額単位変換設定,raw→proceed変換,Yes,Yes (gcs-to-bq),No,千円単位変換設定
+mapping,,,mapping_files.csv,テーブル名マッピング定義（旧）,未使用,No,No,Yes,config/mappingに移行済み・削除候補
+mapping,,,monetary_scale_conversion.csv,金額単位変換設定（旧）,未使用,No,No,Yes,config/mappingに移行済み・削除候補
+mapping,columns,,stocks.csv,在庫カラム定義（旧）,未使用,No,No,Yes,config/columnsに移行済み・削除候補
+mapping,columns,,ms_allocation_ratio.csv,案分比率マスタカラム定義（旧）,未使用,No,No,Yes,config/columnsに移行済み・削除候補
+mapping,columns,,ms_department_category.csv,部門カテゴリマスタカラム定義（旧）,未使用,No,No,Yes,config/columnsに移行済み・削除候補
+sql,,,README.md,SQLファイル説明書,ドキュメント,No,No,No,DWH/DataMart SQL説明
+sql,,,dashboard_management_report.sql,経営資料ダッシュボードSQL,Looker Studio,No,No,Yes,旧版・削除候補
+sql,,,dashboard_management_report_vertical.sql,経営資料ダッシュボードSQL（縦持ち）,Looker Studio,Yes,No,No,Looker Studio用・現行版
+sql,,,dashboard_management_report_vertical_old.sql,経営資料ダッシュボードSQL（旧版）,Looker Studio,No,No,Yes,バックアップ・削除候補
+sql,,,dashboard_management_report_vertical_test.sql,経営資料ダッシュボードSQL（テスト版）,開発・テスト,No,No,Yes,テスト用・削除候補
+sql,,,update_ms_department_category_group_name.sql,部門カテゴリマスタ更新SQL,マスタ更新,Yes,No,No,初回のみ実行・group_name設定
+sql,,,investigation_log.md,調査ログ,ドキュメント,No,No,Yes,開発メモ・削除候補
+sql,scripts,,update_dwh.sh,DWH更新シェルスクリプト,DWH作成,Yes,No,No,11個のDWHテーブルを一括更新
+sql,scripts,,update_datamart.sh,DataMart更新シェルスクリプト,DataMart作成,Yes,No,No,1個のDataMartテーブルを更新
+sql,scripts,,update_all.sh,全テーブル更新シェルスクリプト,DWH+DataMart作成,Yes,No,No,update_dwh.sh + update_datamart.shを連続実行
+sql,split_dwh_dm,,dwh_sales_actual.sql,売上実績DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_sales_actual_prev_year.sql,売上実績（前年）DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_sales_target.sql,売上目標DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_operating_expenses.sql,営業経費DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_non_operating_income.sql,営業外収入DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_non_operating_expenses.sql,営業外費用DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_miscellaneous_loss.sql,雑損失DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_head_office_expenses.sql,本店管理費DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_recurring_profit_target.sql,経常利益目標DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_operating_expenses_target.sql,営業経費目標DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,dwh_operating_income_target.sql,営業利益目標DWH作成SQL,DWH作成,Yes,No,No,update_dwh.shから実行
+sql,split_dwh_dm,,datamart_management_report_vertical.sql,経営資料DataMart作成SQL,DataMart作成,Yes,No,No,update_datamart.shから実行・縦持ち形式
+sql,split_dwh_dm,,datamart_management_report_vertical.sql.bak,経営資料DataMart作成SQL（バックアップ）,バックアップ,No,No,Yes,削除候補
+sql,tmp_file,,script_job_2cc3b46f2d9c728ba2eeea8f775f5e24_0_202510281.csv,一時ファイル,一時ファイル,No,No,Yes,削除候補
+sql,tmp_file,,script_job_ea06a2cb30f7f7df444e9650bf54fcb5_0_20251028.csv,一時ファイル,一時ファイル,No,No,Yes,削除候補
+sql,tmp_file,,データソース一覧・加工内容 - #1_1経営資料（当月）_latest.csv,データソース一覧,ドキュメント,No,No,No,参考資料

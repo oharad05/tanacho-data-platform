@@ -1,0 +1,1 @@
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_current_month_tbl` AS
