@@ -1,0 +1,14 @@
+jp_name,en_name,type,description
+期間,period,DATE,期間
+項目,item,STRING,項目
+福岡支店計,fukuoka_branch_total,FLOAT,福岡支店計
+工事部計,construction_department_total,FLOAT,工事部計
+硝子工事,glass_construction,FLOAT,硝子工事
+ビルサッシ,building_sash,FLOAT,ビルサッシ
+内装工事,interior_construction,FLOAT,内装工事
+硝子樹脂計,glass_resin_total,FLOAT,硝子樹脂計
+硝子,glass,FLOAT,硝子
+建材,building_materials,FLOAT,建材
+樹脂,resin,FLOAT,樹脂
+GSセンター,gs_center,FLOAT,GSセンター
+福北センター,fukuhoku_center,FLOAT,福北センター

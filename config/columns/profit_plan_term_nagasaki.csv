@@ -1,0 +1,13 @@
+jp_name,en_name,type,description
+期間,period,DATE,期間
+項目,item,STRING,項目
+長崎支店計,nagasaki_branch_total,FLOAT,長崎支店計
+ガラス工事,glass_construction_dept,FLOAT,ガラス工事
+ビルサッシ,building_sash,FLOAT,ビルサッシ
+工事営業部計,construction_sales_department_total,FLOAT,工事営業部計
+硝子工事,glass_construction,FLOAT,硝子工事
+サッシ工事,sash_construction,FLOAT,サッシ工事
+硝子販売,glass_sales,FLOAT,硝子販売
+サッシ販売,sash_sales,FLOAT,サッシ販売
+完成品,finished_products,FLOAT,完成品
+硝子建材営業部,glass_building_material_sales_department_total,FLOAT,硝子建材営業部

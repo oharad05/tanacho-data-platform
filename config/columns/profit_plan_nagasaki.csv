@@ -1,0 +1,14 @@
+jp_name,en_name,type,description
+期間,period,DATE,期間
+項目,item,STRING,項目
+長崎支店計,nagasaki_branch_total,NUMERIC,長崎支店計
+工事営業部計,construction_sales_department_total,NUMERIC,工事営業部計
+ガラス工事,glass_construction,NUMERIC,ガラス工事
+ビルサッシ,building_sash,NUMERIC,ビルサッシ
+硝子建材営業部計,glass_building_material_sales_department_total,NUMERIC,硝子建材営業部計
+硝子工事,glass_construction_sales,NUMERIC,硝子工事
+硝子販売,glass_sales,NUMERIC,硝子販売
+サッシ工事,sash_construction,NUMERIC,サッシ工事
+サッシ販売,sash_sales,NUMERIC,サッシ販売
+サッシ完成品,sash_finished_products,NUMERIC,サッシ完成品
+その他,others,NUMERIC,その他

@@ -1,11 +1,13 @@
-jp_name,en_name
-1_全支店[1.売上管理] 担当者売上目標／実績データ.xlsx,sales_target_and_achievements
-3_請求残高一覧表（月間）.xlsx,billing_balance
-4_元帳_雑収入.xlsx,ledger_income
-6_部門集計表_202509.xlsx,department_summary
-7_社内金利計算表.xlsx,internal_interest
-9_在庫.xlsx,stocks
-10_案分比率マスタ.xlsx,ms_allocation_ratio
-12_損益5期目標.xlsx,profit_plan_term
-16_元帳_雑損失.xlsx,ledger_loss
-99_部門カテゴリマスタ(部門集計表ヘッダー情報).xlsx,ms_department_category
+jp_name,en_name,sheet_name
+1_全支店[1.売上管理] 担当者売上目標／実績データ.xlsx,sales_target_and_achievements,
+3_請求残高一覧表（月間）.xlsx,billing_balance,
+4_元帳_雑収入.xlsx,ledger_income,
+6_部門集計表_202509.xlsx,department_summary,
+7_社内金利計算表.xlsx,internal_interest,
+9_在庫.xlsx,stocks,
+10_案分比率マスタ.xlsx,ms_allocation_ratio,
+12_損益5期目標.xlsx,profit_plan_term,東京支店目標103期
+12_損益5期目標.xlsx,profit_plan_term_nagasaki,長崎支店目標103期
+12_損益5期目標.xlsx,profit_plan_term_fukuoka,福岡支店目標103期
+16_元帳_雑損失.xlsx,ledger_loss,
+99_部門カテゴリマスタ(部門集計表ヘッダー情報).xlsx,ms_department_category,
