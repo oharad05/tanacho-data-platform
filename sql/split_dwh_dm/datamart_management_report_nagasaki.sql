@@ -525,7 +525,7 @@ aggregated_metrics AS (
   SELECT
     cm.year_month,
     cm.organization,
-    CONCAT(cm.organization, '計') AS detail_category,
+    cm.organization AS detail_category,  -- 硝子建材営業部計は既に'計'がついているのでCONCATしない
     -- ========== 売上・粗利は個人/部門データを集計 ==========
     SUM(cm.sales_actual) AS sales_actual,
     SUM(cm.sales_target) AS sales_target,
@@ -565,17 +565,17 @@ aggregated_metrics AS (
     AND ed.detail_category = '硝子建材営業部'
   LEFT JOIN operating_expenses_target oet_build
     ON cm.year_month = oet_build.year_month
-    AND oet_build.organization = '硝子建材営業部'
+    AND oet_build.organization = '硝子建材営業部計'
     AND oet_build.detail_category = '硝子建材営業部計'
   LEFT JOIN operating_income_target oit_build
     ON cm.year_month = oit_build.year_month
-    AND oit_build.organization = '硝子建材営業部'
+    AND oit_build.organization = '硝子建材営業部計'
     AND oit_build.detail_category = '硝子建材営業部計'
   LEFT JOIN recurring_profit_target rpt_build
     ON cm.year_month = rpt_build.year_month
-    AND rpt_build.organization = '硝子建材営業部'
+    AND rpt_build.organization = '硝子建材営業部計'
     AND rpt_build.detail_category = '硝子建材営業部計'
-  WHERE cm.organization = '硝子建材営業部'
+  WHERE cm.organization = '硝子建材営業部計'
   GROUP BY cm.year_month, cm.organization
 
   UNION ALL
