@@ -1,21 +1,21 @@
 /*
 ============================================================
-DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式）
+DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式） - 長崎支店版
 ============================================================
 目的: 月次損益計算書を組織階層別に可視化（Looker Studio用縦持ち出力）
 対象データ: 前月実績データ（CURRENT_DATEから自動計算）
-組織階層: 東京支店計 > 工事営業部計/硝子建材営業部 > 担当者別/部門別
+組織階層: 長崎支店計 > 工事営業部計/硝子建材営業部計 > 部門別
 
 出力スキーマ:
   - date: 対象月（DATE型）
   - main_category: 大項目（売上高、売上総利益など）
   - secondary_category: 小項目（前年実績、本年目標、本年実績、またはNULL）
-  - main_department: 最上位部門（東京支店）
-  - secondary_department: 詳細部門（東京支店計、工事営業部計、佐々木（大成・鹿島他）など）
+  - main_department: 最上位部門（長崎支店）
+  - secondary_department: 詳細部門（長崎支店計、工事営業部計、ガラス工事など）
   - value: 集計値
 
 データソース:
-  - DWHテーブル（dwh_sales_actual, dwh_sales_target, dwh_operating_expenses など）
+  - DWHテーブル（長崎支店用: dwh_sales_actual_prev_year` WHERE branch = '長崎支店', operating_expenses` WHERE branch = '長崎支店' など）
 
 注意事項:
   - 金額は円単位でDBに格納、Looker Studioで千円表示
@@ -23,7 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period` AS
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_nagasaki` AS
 WITH
 -- ============================================================
 -- DWHテーブルからデータを読み込み
@@ -38,9 +38,10 @@ sales_actual AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+  WHERE branch = '長崎支店'
 ),
 
--- 1-2. 売上高・粗利実績（前年実績）
+-- 1-2. 売上高・粗利実績（前年実績） - 長崎支店版
 sales_actual_prev_year AS (
   SELECT
     year_month,
@@ -49,6 +50,7 @@ sales_actual_prev_year AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+  WHERE branch = '長崎支店'
 ),
 
 -- 2. 売上高・粗利目標
@@ -60,18 +62,20 @@ sales_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+  WHERE branch = '長崎支店'
 ),
 
--- 3. 営業経費
+-- 3. 営業経費 - 長崎支店版
 operating_expenses AS (
   SELECT
     year_month,
     detail_category,
     operating_expense_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+  WHERE branch = '長崎支店'
 ),
 
--- 4. 営業外収入（リベート・その他）
+-- 4. 営業外収入（リベート・その他） - 長崎支店版
 non_operating_income AS (
   SELECT
     year_month,
@@ -79,6 +83,7 @@ non_operating_income AS (
     rebate_income,
     other_non_operating_income
   FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+  WHERE branch = '長崎支店'
 ),
 
 -- 5. 営業外費用（社内利息A・B）
@@ -90,13 +95,14 @@ non_operating_expenses AS (
   FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses`
 ),
 
--- 6. 営業外費用（雑損失）
+-- 6. 営業外費用（雑損失） - 長崎支店版
 miscellaneous_loss AS (
   SELECT
     year_month,
     detail_category,
     miscellaneous_loss_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
+  WHERE branch = '長崎支店'
 ),
 
 -- 7. 本店管理費
@@ -108,7 +114,7 @@ head_office_expenses AS (
   FROM `data-platform-prod-475201.corporate_data_dwh.head_office_expenses`
 ),
 
--- 8. 経常利益目標
+-- 8. 経常利益目標 - 長崎支店版
 recurring_profit_target AS (
   SELECT
     year_month,
@@ -116,9 +122,10 @@ recurring_profit_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target`
+  WHERE branch = '長崎支店'
 ),
 
--- 9. 営業経費目標
+-- 9. 営業経費目標 - 長崎支店版
 operating_expenses_target AS (
   SELECT
     year_month,
@@ -126,9 +133,10 @@ operating_expenses_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target`
+  WHERE branch = '長崎支店'
 ),
 
--- 10. 営業利益目標
+-- 10. 営業利益目標 - 長崎支店版
 operating_income_target AS (
   SELECT
     year_month,
@@ -136,6 +144,7 @@ operating_income_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_income_target`
+  WHERE branch = '長崎支店'
 ),
 
 -- ============================================================
@@ -146,11 +155,11 @@ operating_income_target AS (
 all_combinations AS (
   SELECT DISTINCT year_month, organization, detail_category
   FROM (
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` WHERE branch = '長崎支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` WHERE branch = '長崎支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` WHERE branch = '長崎支店'
   )
   WHERE detail_category NOT LIKE '%計'  -- 集計レベルを除外
 ),
@@ -164,6 +173,7 @@ cumulative_recurring_profit AS (
   org_categories_months AS (
     SELECT DISTINCT year_month, organization, detail_category
     FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+    WHERE branch = '長崎支店'
   ),
 
   -- 各月の経常利益実績を計算
@@ -191,18 +201,22 @@ cumulative_recurring_profit AS (
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
       ON sa.detail_category = oe.detail_category
       AND sa.year_month = oe.year_month
+      AND oe.branch = '長崎支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` ni
       ON sa.detail_category = ni.detail_category
       AND sa.year_month = ni.year_month
+      AND ni.branch = '長崎支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` ne
       ON sa.detail_category = ne.detail_category
       AND sa.year_month = ne.year_month
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
       ON sa.detail_category = ml.detail_category
       AND sa.year_month = ml.year_month
+      AND ml.branch = '長崎支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` he
       ON sa.detail_category = he.detail_category
       AND sa.year_month = he.year_month
+    WHERE sa.branch = '長崎支店'
   ),
 
   -- 期首を月ごとに計算
@@ -249,11 +263,10 @@ cumulative_recurring_profit AS (
 expense_data AS (
   SELECT
     oe.year_month,
-    -- parent_organizationを追加（detail_categoryから導出）
+    -- parent_organizationを追加（detail_categoryから導出） - 長崎支店版
     CASE
-      WHEN oe.detail_category = 'ガラス工事計' THEN '工事営業部'
-      WHEN oe.detail_category = '山本（改装）' THEN '工事営業部'
-      WHEN oe.detail_category = '硝子建材営業部' THEN '硝子建材営業部'
+      WHEN oe.detail_category = '工事営業部計' THEN '工事営業部'
+      WHEN oe.detail_category = '硝子建材営業部計' THEN '硝子建材営業部'
       ELSE NULL
     END AS parent_organization,
     oe.detail_category,
@@ -570,8 +583,8 @@ aggregated_metrics AS (
   -- 最上位レベル（東京支店計）
   SELECT
     cm.year_month,
-    '東京支店' AS organization,
-    '東京支店計' AS detail_category,
+    '長崎支店' AS organization,
+    '長崎支店計' AS detail_category,
     -- ========== 売上・粗利は個人/部門データを集計 ==========
     SUM(cm.sales_actual) AS sales_actual,
     SUM(cm.sales_target) AS sales_target,
@@ -619,16 +632,16 @@ aggregated_metrics AS (
   ) ed ON cm.year_month = ed.year_month
   LEFT JOIN operating_expenses_target oet_tokyo
     ON cm.year_month = oet_tokyo.year_month
-    AND oet_tokyo.organization = '東京支店'
-    AND oet_tokyo.detail_category = '東京支店計'
+    AND oet_tokyo.organization = '長崎支店'
+    AND oet_tokyo.detail_category = '長崎支店計'
   LEFT JOIN operating_income_target oit_tokyo
     ON cm.year_month = oit_tokyo.year_month
-    AND oit_tokyo.organization = '東京支店'
-    AND oit_tokyo.detail_category = '東京支店計'
+    AND oit_tokyo.organization = '長崎支店'
+    AND oit_tokyo.detail_category = '長崎支店計'
   LEFT JOIN recurring_profit_target rpt_tokyo
     ON cm.year_month = rpt_tokyo.year_month
-    AND rpt_tokyo.organization = '東京支店'
-    AND rpt_tokyo.detail_category = '東京支店計'
+    AND rpt_tokyo.organization = '長崎支店'
+    AND rpt_tokyo.detail_category = '長崎支店計'
   GROUP BY cm.year_month
 ),
 
@@ -643,26 +656,21 @@ vertical_format AS (
     1 AS main_category_sort_order,
     '前年実績' AS secondary_category,
     1 AS secondary_category_sort_order,
-    '東京支店' AS main_department,
+    '長崎支店' AS main_department,
     detail_category AS secondary_department,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END AS secondary_department_sort_order,
     sales_prev_year AS value
   FROM aggregated_metrics
@@ -674,26 +682,21 @@ vertical_format AS (
     1,
     '本年目標',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     sales_target
   FROM aggregated_metrics
@@ -705,26 +708,21 @@ vertical_format AS (
     1,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     sales_actual
   FROM aggregated_metrics
@@ -736,26 +734,21 @@ vertical_format AS (
     1,
     '前年比(%)',
     4,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(sales_prev_year, 0) IS NULL THEN NULL
@@ -770,26 +763,21 @@ vertical_format AS (
     1,
     '目標比(%)',
     5,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(sales_target, 0) IS NULL THEN NULL
@@ -806,26 +794,21 @@ vertical_format AS (
     2,
     '前年実績',
     1,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_prev_year
   FROM aggregated_metrics
@@ -837,26 +820,21 @@ vertical_format AS (
     2,
     '本年目標',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_target
   FROM aggregated_metrics
@@ -868,26 +846,21 @@ vertical_format AS (
     2,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_actual
   FROM aggregated_metrics
@@ -899,26 +872,21 @@ vertical_format AS (
     2,
     '前年比(%)',
     4,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(gross_profit_prev_year, 0) IS NULL THEN NULL
@@ -933,26 +901,21 @@ vertical_format AS (
     2,
     '目標比(%)',
     5,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(gross_profit_target, 0) IS NULL THEN NULL
@@ -969,26 +932,21 @@ vertical_format AS (
     3,
     '前年実績',
     1,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_margin_prev_year
   FROM aggregated_metrics
@@ -1000,26 +958,21 @@ vertical_format AS (
     3,
     '本年目標',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_margin_target
   FROM aggregated_metrics
@@ -1031,26 +984,21 @@ vertical_format AS (
     3,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     gross_profit_margin_actual
   FROM aggregated_metrics
@@ -1062,26 +1010,21 @@ vertical_format AS (
     3,
     '前年比(%)',
     4,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(gross_profit_margin_prev_year, 0) IS NULL THEN NULL
@@ -1096,26 +1039,21 @@ vertical_format AS (
     3,
     '目標比(%)',
     5,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(gross_profit_margin_target, 0) IS NULL THEN NULL
@@ -1132,26 +1070,21 @@ vertical_format AS (
     4,
     '本年目標',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     operating_expense_target
   FROM aggregated_metrics
@@ -1164,26 +1097,21 @@ vertical_format AS (
     4,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     operating_expense_actual
   FROM aggregated_metrics
@@ -1195,26 +1123,21 @@ vertical_format AS (
     4,
     '目標比(%)',
     5,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(operating_expense_target, 0) IS NULL THEN NULL
@@ -1231,26 +1154,21 @@ vertical_format AS (
     5,
     '本年目標',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     operating_income_target
   FROM aggregated_metrics
@@ -1263,26 +1181,21 @@ vertical_format AS (
     5,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     operating_income_actual
   FROM aggregated_metrics
@@ -1294,26 +1207,21 @@ vertical_format AS (
     5,
     '目標比(%)',
     5,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     CASE
       WHEN NULLIF(operating_income_target, 0) IS NULL THEN NULL
@@ -1330,26 +1238,21 @@ vertical_format AS (
     6,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     rebate_income
   FROM aggregated_metrics
@@ -1363,26 +1266,21 @@ vertical_format AS (
     7,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     other_non_operating_income
   FROM aggregated_metrics
@@ -1396,26 +1294,21 @@ vertical_format AS (
     8,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     non_operating_expenses
   FROM aggregated_metrics
@@ -1429,26 +1322,21 @@ vertical_format AS (
     9,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     miscellaneous_loss
   FROM aggregated_metrics
@@ -1462,26 +1350,21 @@ vertical_format AS (
     10,
     '本年実績',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     head_office_expense
   FROM aggregated_metrics
@@ -1495,26 +1378,21 @@ vertical_format AS (
     11,
     '本年目標',
     1,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     recurring_profit_target
   FROM aggregated_metrics
@@ -1526,26 +1404,21 @@ vertical_format AS (
     11,
     '本年実績',
     2,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     recurring_profit_actual
   FROM aggregated_metrics
@@ -1557,26 +1430,21 @@ vertical_format AS (
     11,
     '累積本年目標',
     3,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     COALESCE(recurring_profit_target, 0)
   FROM aggregated_metrics
@@ -1589,26 +1457,21 @@ vertical_format AS (
     11,
     '累積本年実績',
     4,
-    '東京支店',
+    '長崎支店',
     detail_category,
     CASE detail_category
-      WHEN '東京支店計' THEN 1
-      WHEN '工事営業部計' THEN 2
-      WHEN '佐々木（大成・鹿島他）' THEN 3
-      WHEN '浅井（清水他）' THEN 4
-      WHEN '小笠原（三井住友他）' THEN 5
-      WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
-      WHEN 'ガラス工事計' THEN 8
-      WHEN '山本（改装）' THEN 9
-      WHEN '硝子建材営業部計' THEN 10
-      WHEN '硝子工事' THEN 11
-      WHEN 'ビルサッシ' THEN 12
-      WHEN '硝子販売' THEN 13
-      WHEN 'サッシ販売' THEN 14
-      WHEN 'サッシ完成品' THEN 15
-      WHEN 'その他' THEN 16
-      ELSE 99
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
     END,
     COALESCE(recurring_profit_actual, 0)
   FROM aggregated_metrics
@@ -1658,9 +1521,9 @@ SELECT
     WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)')
       AND NOT REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)')
       THEN value * 100
-    -- 目標比と前年比は比率（倍率）で格納されているのでそのまま表示
-    -- （例: value=1.5 → 1.5倍 = 150%と表示、Looker Studioで%を付与）
-    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value
+    -- 目標比と前年比は比率（倍率）で格納されているので100倍してパーセント表示
+    -- （例: value=1.5 → 150%と表示）
+    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value * 100
     -- 千円表記の項目（1/1000倍して四捨五入）
     WHEN main_category != '売上総利益率'
       AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')

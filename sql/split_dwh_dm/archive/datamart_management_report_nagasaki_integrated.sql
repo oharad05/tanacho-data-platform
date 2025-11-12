@@ -408,11 +408,11 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから直接取得 ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    oet_glass.target_amount AS operating_expense_target,
+    MAX(oet_glass.target_amount) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     -- 営業利益の再計算
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    oit_glass.target_amount AS operating_income_target,
+    MAX(oit_glass.target_amount) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     -- 営業外収入
     MAX(ed.rebate_income) AS rebate_income,
@@ -432,7 +432,7 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    rpt_glass.target_amount AS recurring_profit_target
+    MAX(rpt_glass.target_amount) AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
     ON cm.year_month = ed.year_month
@@ -452,7 +452,7 @@ aggregated_metrics AS (
     AND rpt_glass.detail_category = 'ガラス工事計'
   WHERE cm.organization = '工事営業部'
     AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
-  GROUP BY cm.year_month, cm.organization, oet_glass.target_amount, oit_glass.target_amount, rpt_glass.target_amount
+  GROUP BY cm.year_month, cm.organization
 
   UNION ALL
 
@@ -473,10 +473,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから集計（ガラス工事計 + 山本（改装）） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    oet_eng.target_amount AS operating_expense_target,
+    MAX(oet_eng.target_amount) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    oit_eng.target_amount AS operating_income_target,
+    MAX(oit_eng.target_amount) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -492,7 +492,7 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    rpt_eng.target_amount AS recurring_profit_target
+    MAX(rpt_eng.target_amount) AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN (
     SELECT
@@ -523,7 +523,7 @@ aggregated_metrics AS (
     AND rpt_eng.organization = '工事営業部'
     AND rpt_eng.detail_category = '工事営業部計'
   WHERE cm.organization = '工事営業部'
-  GROUP BY cm.year_month, cm.organization, oet_eng.target_amount, oit_eng.target_amount, rpt_eng.target_amount
+  GROUP BY cm.year_month, cm.organization
 
   UNION ALL
 
@@ -544,10 +544,10 @@ aggregated_metrics AS (
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)) AS gross_profit_margin_prev_year,
     -- ========== 経費はexpense_dataから取得（硝子建材営業部のみ） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
-    oet_build.target_amount AS operating_expense_target,
+    MAX(oet_build.target_amount) AS operating_expense_target,
     CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
-    oit_build.target_amount AS operating_income_target,
+    MAX(oit_build.target_amount) AS operating_income_target,
     CAST(NULL AS FLOAT64) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -563,7 +563,7 @@ aggregated_metrics AS (
       - COALESCE(MAX(ed.misc_loss), 0)
       - COALESCE(MAX(ed.hq_expense), 0)
     ) AS recurring_profit_actual,
-    rpt_build.target_amount AS recurring_profit_target
+    MAX(rpt_build.target_amount) AS recurring_profit_target
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
     ON cm.year_month = ed.year_month
@@ -582,7 +582,7 @@ aggregated_metrics AS (
     AND rpt_build.organization = '硝子建材営業部'
     AND rpt_build.detail_category = '硝子建材営業部計'
   WHERE cm.organization = '硝子建材営業部'
-  GROUP BY cm.year_month, cm.organization, oet_build.target_amount, oit_build.target_amount, rpt_build.target_amount
+  GROUP BY cm.year_month, cm.organization
 
   UNION ALL
 
@@ -1523,9 +1523,13 @@ SELECT
   value,
   -- display_valueの計算
   CASE
-    -- パーセント表記の項目
-    WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)') THEN value * 100
-    WHEN REGEXP_CONTAINS(secondary_category, r'\(%\)') THEN value * 100
+    -- 利益率（売上総利益率など）は小数で格納されているので100倍してパーセント表示
+    WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)')
+      AND NOT REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)')
+      THEN value * 100
+    -- 目標比と前年比は比率（倍率）で格納されているのでそのまま表示
+    -- （例: value=1.5 → 1.5倍 = 150%と表示、Looker Studioで%を付与）
+    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value
     -- 千円表記の項目（1/1000倍して四捨五入）
     WHEN main_category != '売上総利益率'
       AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')

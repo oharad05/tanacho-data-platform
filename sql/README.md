@@ -41,6 +41,42 @@ corporate_data_dm（Looker Studio用DataMart）
 - **corporate_data_dwh**: 指標別に加工した中間テーブル（9テーブル）
 - **corporate_data_dm**: Looker Studioで参照する最終テーブル（縦持ち形式）
 
+## DataMart作成フロー（東京支店・長崎支店統合）
+
+DataMartは3段階で作成されます：
+
+```
+1. 東京支店DataMart作成
+   sql/split_dwh_dm/datamart_management_report_tokyo.sql
+   ↓
+   corporate_data_dm.management_documents_all_period
+
+2. 長崎支店DataMart作成
+   sql/split_dwh_dm/datamart_management_report_nagasaki.sql
+   ↓
+   corporate_data_dm.management_documents_all_period_nagasaki
+
+3. 統合DataMart作成（東京 + 長崎）
+   sql/split_dwh_dm/datamart_management_report_all.sql
+   ↓
+   corporate_data_dm.management_documents_all_period_all ← Looker Studioで参照
+```
+
+### 実行方法
+
+DataMart更新スクリプトを実行すると、上記3つのテーブルが順次作成されます：
+
+```bash
+bash sql/scripts/update_datamart.sh
+```
+
+このスクリプトは以下を自動実行します：
+1. 東京支店DataMart作成（`management_documents_all_period`）
+2. 長崎支店DataMart作成（`management_documents_all_period_nagasaki`）
+3. 統合DataMart作成（`management_documents_all_period_all`）
+
+**注意**: Looker Studioでは統合テーブル（`management_documents_all_period_all`）を参照し、レポート側で東京支店・長崎支店をフィルタしてください。
+
 ## 使用方法
 
 ### 1. 日付パラメータの自動化

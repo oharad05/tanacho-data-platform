@@ -38,6 +38,7 @@ sales_actual AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+  WHERE branch = '東京支店'
 ),
 
 -- 1-2. 売上高・粗利実績（前年実績）
@@ -49,6 +50,7 @@ sales_actual_prev_year AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+  WHERE branch = '東京支店'
 ),
 
 -- 2. 売上高・粗利目標
@@ -60,6 +62,7 @@ sales_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+  WHERE branch = '東京支店'
 ),
 
 -- 3. 営業経費
@@ -69,6 +72,7 @@ operating_expenses AS (
     detail_category,
     operating_expense_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+  WHERE branch = '東京支店'
 ),
 
 -- 4. 営業外収入（リベート・その他）
@@ -79,6 +83,7 @@ non_operating_income AS (
     rebate_income,
     other_non_operating_income
   FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+  WHERE branch = '東京支店'
 ),
 
 -- 5. 営業外費用（社内利息A・B）
@@ -97,6 +102,7 @@ miscellaneous_loss AS (
     detail_category,
     miscellaneous_loss_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
+  WHERE branch = '東京支店'
 ),
 
 -- 7. 本店管理費
@@ -116,6 +122,7 @@ recurring_profit_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target`
+  WHERE branch = '東京支店'
 ),
 
 -- 9. 営業経費目標
@@ -126,6 +133,7 @@ operating_expenses_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target`
+  WHERE branch = '東京支店'
 ),
 
 -- 10. 営業利益目標
@@ -136,6 +144,7 @@ operating_income_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_income_target`
+  WHERE branch = '東京支店'
 ),
 
 -- ============================================================
@@ -146,11 +155,11 @@ operating_income_target AS (
 all_combinations AS (
   SELECT DISTINCT year_month, organization, detail_category
   FROM (
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` WHERE branch = '東京支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` WHERE branch = '東京支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` WHERE branch = '東京支店'
   )
   WHERE detail_category NOT LIKE '%計'  -- 集計レベルを除外
 ),
@@ -164,6 +173,7 @@ cumulative_recurring_profit AS (
   org_categories_months AS (
     SELECT DISTINCT year_month, organization, detail_category
     FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+    WHERE branch = '東京支店'
   ),
 
   -- 各月の経常利益実績を計算
@@ -187,17 +197,17 @@ cumulative_recurring_profit AS (
       -- 本店管理費
       - COALESCE(he.head_office_expense, 0)
       AS monthly_recurring_profit
-    FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
-    LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
+    FROM (SELECT * FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` WHERE branch = '東京支店') sa
+    LEFT JOIN (SELECT * FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses` WHERE branch = '東京支店') oe
       ON sa.detail_category = oe.detail_category
       AND sa.year_month = oe.year_month
-    LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` ni
+    LEFT JOIN (SELECT * FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income` WHERE branch = '東京支店') ni
       ON sa.detail_category = ni.detail_category
       AND sa.year_month = ni.year_month
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` ne
       ON sa.detail_category = ne.detail_category
       AND sa.year_month = ne.year_month
-    LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
+    LEFT JOIN (SELECT * FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` WHERE branch = '東京支店') ml
       ON sa.detail_category = ml.detail_category
       AND sa.year_month = ml.year_month
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` he
@@ -1658,9 +1668,9 @@ SELECT
     WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)')
       AND NOT REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)')
       THEN value * 100
-    -- 目標比と前年比は比率（倍率）で格納されているのでそのまま表示
-    -- （例: value=1.5 → 1.5倍 = 150%と表示、Looker Studioで%を付与）
-    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value
+    -- 目標比と前年比は比率（倍率）で格納されているので100倍してパーセント表示
+    -- （例: value=1.5 → 150%と表示）
+    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value * 100
     -- 千円表記の項目（1/1000倍して四捨五入）
     WHEN main_category != '売上総利益率'
       AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
