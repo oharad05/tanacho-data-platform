@@ -11,7 +11,11 @@
 # 処理フロー:
 #   1. 東京支店DataMart作成 → management_documents_all_period
 #   2. 長崎支店DataMart作成 → management_documents_all_period_nagasaki
-#   3. 統合DataMart作成     → management_documents_all_period_all
+#   3. 福岡支店DataMart作成 → management_documents_all_period_fukuoka
+#   4. 統合DataMart作成     → management_documents_all_period_all
+#
+# 重要: 統合DataMartは個別支店DataMartをUNIONするため、
+#       必ず個別支店DataMart作成後に実行すること
 # ============================================================
 
 set -e  # エラー時に即座に終了
@@ -61,10 +65,27 @@ else
 fi
 
 # ============================================================
-# 3. 統合DataMart作成
+# 3. 福岡支店DataMart作成
 # ============================================================
 echo ""
-echo "3/3: 統合DataMartを作成中（東京支店 + 長崎支店）..."
+echo "3/4: 福岡支店DataMartを作成中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/datamart_management_report_fukuoka.sql"
+
+if [ $? -eq 0 ]; then
+  echo "✓ 福岡支店DataMart作成完了"
+else
+  echo "✗ 福岡支店DataMart作成失敗"
+  exit 1
+fi
+
+# ============================================================
+# 4. 統合DataMart作成
+# ============================================================
+echo ""
+echo "4/4: 統合DataMartを作成中（東京支店 + 長崎支店 + 福岡支店）..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
@@ -83,6 +104,7 @@ echo "DataMart更新処理が完了しました"
 echo "作成されたテーブル:"
 echo "  - ${DATASET_DM}.management_documents_all_period (東京支店)"
 echo "  - ${DATASET_DM}.management_documents_all_period_nagasaki (長崎支店)"
+echo "  - ${DATASET_DM}.management_documents_all_period_fukuoka (福岡支店)"
 echo "  - ${DATASET_DM}.management_documents_all_period_all (統合)"
 echo ""
 echo "Looker Studioで最新データを確認できます"

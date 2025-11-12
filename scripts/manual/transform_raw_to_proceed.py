@@ -20,14 +20,15 @@ PROJECT_ID = "data-platform-prod-475201"
 LANDING_BUCKET = "data-platform-landing-prod"
 COLUMNS_PATH = "config/columns"  # ローカルのカラム定義ファイルパス
 MONETARY_SCALE_FILE = "config/mapping/monetary_scale_conversion.csv"  # 金額変換設定ファイル
+FILE_NAME_MAPPING_FILE = "config/mapping/mapping_files.csv"  # ファイル名マッピングファイル
 
 def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
     """
     カラムマッピング定義を読み込み
-    
+
     Args:
         table_name: テーブル名（例: sales_target_and_achievements）
-    
+
     Returns:
         {日本語カラム名: {"en_name": 英語名, "type": データ型}}
     """
@@ -35,7 +36,7 @@ def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
     if not os.path.exists(mapping_file):
         print(f"⚠️  マッピングファイルが見つかりません: {mapping_file}")
         return {}
-    
+
     df = pd.read_csv(mapping_file)
     mapping = {}
     for _, row in df.iterrows():
@@ -43,6 +44,26 @@ def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
             'en_name': row['en_name'],
             'type': row['type']
         }
+    return mapping
+
+def load_file_name_mapping() -> Dict[str, tuple]:
+    """
+    ファイル名マッピング定義を読み込み
+
+    Returns:
+        {英語テーブル名: (日本語ファイル名, シート名)}
+    """
+    if not os.path.exists(FILE_NAME_MAPPING_FILE):
+        print(f"⚠️  ファイル名マッピングファイルが見つかりません: {FILE_NAME_MAPPING_FILE}")
+        return {}
+
+    df = pd.read_csv(FILE_NAME_MAPPING_FILE)
+    mapping = {}
+    for _, row in df.iterrows():
+        en_name = row['en_name']
+        jp_name = row['jp_name']
+        sheet_name = row['sheet_name'] if pd.notna(row['sheet_name']) else None
+        mapping[en_name] = (jp_name, sheet_name)
     return mapping
 
 def convert_date_format(value: Any, date_type: str, column_name: str = '') -> str:
@@ -176,7 +197,8 @@ def apply_data_type_conversion(df: pd.DataFrame, column_mapping: Dict) -> pd.Dat
         elif data_type == 'INT64':
             # 空文字やNaNを扱えるようにnullable integerを使用
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            df[col] = df[col].astype('Int64')
+            # 浮動小数点数を丸めてから整数に変換
+            df[col] = df[col].round().astype('Int64')
         
         # NUMERIC型
         elif data_type == 'NUMERIC':
@@ -367,7 +389,7 @@ def transform_excel_to_csv(
 def process_gcs_files(yyyymm: str):
     """
     GCS上のraw/ファイルを変換してproceed/に保存
-    
+
     Args:
         yyyymm: 対象年月（例: 202509）
     """
@@ -376,11 +398,14 @@ def process_gcs_files(yyyymm: str):
     print(f"対象年月: {yyyymm}")
     print(f"バケット: {LANDING_BUCKET}")
     print("=" * 60)
-    
+
     # GCSクライアント初期化
     client = storage.Client()
     bucket = client.bucket(LANDING_BUCKET)
-    
+
+    # ファイル名マッピング読み込み
+    file_name_mapping = load_file_name_mapping()
+
     # テーブルリスト（マッピングファイルから取得）
     tables = [
         "sales_target_and_achievements",
@@ -389,65 +414,140 @@ def process_gcs_files(yyyymm: str):
         "department_summary",
         "internal_interest",
         "profit_plan_term",
+        "profit_plan_term_nagasaki",
+        "profit_plan_term_fukuoka",
         "ledger_loss",
         "stocks",
         "ms_allocation_ratio",
         "ms_department_category"
     ]
-    
+
     success_count = 0
     error_count = 0
-    
+
     for table_name in tables:
         try:
-            # GCSパス
-            raw_path = f"raw/{yyyymm}/{table_name}.xlsx"
+            # ファイル名マッピングから日本語ファイル名とシート名を取得
+            if table_name not in file_name_mapping:
+                print(f"⚠️  ファイル名マッピングが見つかりません: {table_name}")
+                error_count += 1
+                continue
+
+            jp_filename, sheet_name = file_name_mapping[table_name]
+
+            # department_summaryの場合、ファイル名に年月を置換
+            if table_name == "department_summary":
+                jp_filename = jp_filename.replace("202509", yyyymm)
+
+            # GCSパス（日本語ファイル名を使用）
+            raw_path = f"raw/{yyyymm}/{jp_filename}"
             proceed_path = f"proceed/{yyyymm}/{table_name}.csv"
-            
+
             # rawファイルをダウンロード
             raw_blob = bucket.blob(raw_path)
             if not raw_blob.exists():
                 print(f"⚠️  ファイルが存在しません: gs://{LANDING_BUCKET}/{raw_path}")
                 error_count += 1
                 continue
-            
+
             # 一時ファイルにダウンロード
             temp_excel = f"/tmp/{table_name}.xlsx"
             temp_csv = f"/tmp/{table_name}.csv"
-            
+
             raw_blob.download_to_filename(temp_excel)
 
             # 変換処理
-            # ms_department_categoryの場合は特定のシートを指定
-            sheet_name = None
-            if table_name == "ms_department_category":
-                sheet_name = "99_部門カテゴリマスタ(部門集計表ヘッダー情報)"
-
             if transform_excel_to_csv(temp_excel, temp_csv, table_name, sheet_name):
                 # proceedにアップロード
                 proceed_blob = bucket.blob(proceed_path)
                 proceed_blob.upload_from_filename(temp_csv)
                 print(f"   → gs://{LANDING_BUCKET}/{proceed_path}")
                 success_count += 1
-                
+
                 # 一時ファイル削除
                 os.remove(temp_excel)
                 os.remove(temp_csv)
             else:
                 error_count += 1
-                
+
         except Exception as e:
             print(f"❌ 処理エラー ({table_name}): {e}")
             error_count += 1
-    
+
     print("=" * 60)
     print(f"処理完了: 成功 {success_count} / エラー {error_count}")
     print("=" * 60)
 
+def generate_month_range(start_yyyymm: str, end_yyyymm: str):
+    """
+    開始月から終了月までの年月リストを生成
+
+    Args:
+        start_yyyymm: 開始年月 (例: '202409')
+        end_yyyymm: 終了年月 (例: '202509')
+
+    Returns:
+        年月リスト ['202409', '202410', ..., '202509']
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+
+    start = datetime.strptime(start_yyyymm, '%Y%m')
+    end = datetime.strptime(end_yyyymm, '%Y%m')
+
+    months = []
+    current = start
+    while current <= end:
+        months.append(current.strftime('%Y%m'))
+        current += relativedelta(months=1)
+
+    return months
+
+def process_multiple_months(start_yyyymm: str, end_yyyymm: str):
+    """
+    複数月のraw → proceed変換を一括実行
+
+    Args:
+        start_yyyymm: 開始年月
+        end_yyyymm: 終了年月
+
+    Returns:
+        処理結果 {"success": 成功数, "error": エラー数}
+    """
+    months = generate_month_range(start_yyyymm, end_yyyymm)
+
+    print("=" * 80)
+    print(f"複数月一括変換処理")
+    print(f"対象期間: {start_yyyymm} ～ {end_yyyymm} ({len(months)}ヶ月)")
+    print("=" * 80)
+
+    total_success = 0
+    total_error = 0
+
+    for yyyymm in months:
+        print(f"\n{'='*80}")
+        print(f"📅 処理月: {yyyymm}")
+        print(f"{'='*80}")
+
+        try:
+            process_gcs_files(yyyymm)
+            total_success += 1
+        except Exception as e:
+            print(f"❌ {yyyymm} の処理中にエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            total_error += 1
+
+    print("\n" + "=" * 80)
+    print(f"全体結果: 成功 {total_success}ヶ月 / エラー {total_error}ヶ月")
+    print("=" * 80)
+
+    return {"success": total_success, "error": total_error}
+
 def process_local_files(yyyymm: str):
     """
     ローカルテスト用: ローカルファイルを変換
-    
+
     Args:
         yyyymm: 対象年月
     """
@@ -455,7 +555,7 @@ def process_local_files(yyyymm: str):
     print(f"ローカル変換テスト")
     print(f"対象年月: {yyyymm}")
     print("=" * 60)
-    
+
     # テスト用にサンプルファイルを処理
     if os.path.exists("/tmp/sample.xlsx"):
         output_path = "/tmp/sample_proceed.csv"
@@ -473,12 +573,22 @@ def process_local_files(yyyymm: str):
 
 if __name__ == "__main__":
     import sys
-    
-    # コマンドライン引数から年月を取得
-    yyyymm = sys.argv[1] if len(sys.argv) > 1 else "202509"
-    
-    # GCS処理モードとローカルテストモードの切り替え
-    if len(sys.argv) > 2 and sys.argv[2] == "--local":
+
+    if len(sys.argv) >= 3 and sys.argv[1] != "--local":
+        # 複数月モード: python transform_raw_to_proceed.py 202409 202509
+        start_yyyymm = sys.argv[1]
+        end_yyyymm = sys.argv[2]
+        process_multiple_months(start_yyyymm, end_yyyymm)
+    elif len(sys.argv) >= 2 and sys.argv[1] != "--local":
+        # 単月モード: python transform_raw_to_proceed.py 202509
+        yyyymm = sys.argv[1]
+        process_gcs_files(yyyymm)
+    elif len(sys.argv) > 2 and sys.argv[2] == "--local":
+        # ローカルテストモード
+        yyyymm = sys.argv[1] if len(sys.argv) > 1 else "202509"
         process_local_files(yyyymm)
     else:
-        process_gcs_files(yyyymm)
+        print("使用方法:")
+        print("  単月処理: python transform_raw_to_proceed.py 202509")
+        print("  複数月処理: python transform_raw_to_proceed.py 202409 202509")
+        print("  ローカルテスト: python transform_raw_to_proceed.py 202509 --local")

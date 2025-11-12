@@ -1,21 +1,21 @@
 /*
 ============================================================
-DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式） - 長崎支店版
+DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式） - 福岡支店版
 ============================================================
 目的: 月次損益計算書を組織階層別に可視化（Looker Studio用縦持ち出力）
 対象データ: 前月実績データ（CURRENT_DATEから自動計算）
-組織階層: 長崎支店計 > 工事営業部計/硝子建材営業部計 > 部門別
+組織階層: 福岡支店計 > 工事営業部計/硝子建材営業部計 > 部門別
 
 出力スキーマ:
   - date: 対象月（DATE型）
   - main_category: 大項目（売上高、売上総利益など）
   - secondary_category: 小項目（前年実績、本年目標、本年実績、またはNULL）
-  - main_department: 最上位部門（長崎支店）
-  - secondary_department: 詳細部門（長崎支店計、工事営業部計、ガラス工事など）
+  - main_department: 最上位部門（福岡支店）
+  - secondary_department: 詳細部門（福岡支店計、工事営業部計、ガラス工事など）
   - value: 集計値
 
 データソース:
-  - DWHテーブル（長崎支店用: dwh_sales_actual_prev_year` WHERE branch = '長崎支店', operating_expenses` WHERE branch = '長崎支店' など）
+  - DWHテーブル（福岡支店用: dwh_sales_actual_prev_year` WHERE branch = '福岡支店', operating_expenses` WHERE branch = '福岡支店' など）
 
 注意事項:
   - 金額は円単位でDBに格納、Looker Studioで千円表示
@@ -23,7 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_nagasaki` AS
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_fukuoka` AS
 WITH
 -- ============================================================
 -- DWHテーブルからデータを読み込み
@@ -38,10 +38,10 @@ sales_actual AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 1-2. 売上高・粗利実績（前年実績） - 長崎支店版
+-- 1-2. 売上高・粗利実績（前年実績） - 福岡支店版
 sales_actual_prev_year AS (
   SELECT
     year_month,
@@ -50,7 +50,7 @@ sales_actual_prev_year AS (
     sales_amount,
     gross_profit_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
 -- 2. 売上高・粗利目標
@@ -62,20 +62,20 @@ sales_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 3. 営業経費 - 長崎支店版
+-- 3. 営業経費 - 福岡支店版
 operating_expenses AS (
   SELECT
     year_month,
     detail_category,
     operating_expense_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 4. 営業外収入（リベート・その他） - 長崎支店版
+-- 4. 営業外収入（リベート・その他） - 福岡支店版
 non_operating_income AS (
   SELECT
     year_month,
@@ -83,26 +83,26 @@ non_operating_income AS (
     rebate_income,
     other_non_operating_income
   FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 5. 営業外費用（社内利息A・B）- 長崎支店版
+-- 5. 営業外費用（社内利息A・B）
 non_operating_expenses AS (
   SELECT
     year_month,
     detail_category,
     interest_expense
-  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_nagasaki`
+  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses`
 ),
 
--- 6. 営業外費用（雑損失） - 長崎支店版
+-- 6. 営業外費用（雑損失） - 福岡支店版
 miscellaneous_loss AS (
   SELECT
     year_month,
     detail_category,
     miscellaneous_loss_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
 -- 7. 本店管理費
@@ -114,7 +114,7 @@ head_office_expenses AS (
   FROM `data-platform-prod-475201.corporate_data_dwh.head_office_expenses`
 ),
 
--- 8. 経常利益目標 - 長崎支店版
+-- 8. 経常利益目標 - 福岡支店版
 recurring_profit_target AS (
   SELECT
     year_month,
@@ -122,10 +122,10 @@ recurring_profit_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 9. 営業経費目標 - 長崎支店版
+-- 9. 営業経費目標 - 福岡支店版
 operating_expenses_target AS (
   SELECT
     year_month,
@@ -133,10 +133,10 @@ operating_expenses_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
--- 10. 営業利益目標 - 長崎支店版
+-- 10. 営業利益目標 - 福岡支店版
 operating_income_target AS (
   SELECT
     year_month,
@@ -144,7 +144,7 @@ operating_income_target AS (
     detail_category,
     target_amount
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_income_target`
-  WHERE branch = '長崎支店'
+  WHERE branch = '福岡支店'
 ),
 
 -- ============================================================
@@ -155,11 +155,11 @@ operating_income_target AS (
 all_combinations AS (
   SELECT DISTINCT year_month, organization, detail_category
   FROM (
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` WHERE branch = '長崎支店'
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` WHERE branch = '福岡支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` WHERE branch = '長崎支店'
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` WHERE branch = '福岡支店'
     UNION DISTINCT
-    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` WHERE branch = '長崎支店'
+    SELECT year_month, organization, detail_category FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` WHERE branch = '福岡支店'
   )
   WHERE detail_category NOT LIKE '%計'  -- 集計レベルを除外
 ),
@@ -173,7 +173,7 @@ cumulative_recurring_profit AS (
   org_categories_months AS (
     SELECT DISTINCT year_month, organization, detail_category
     FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
-    WHERE branch = '長崎支店'
+    WHERE branch = '福岡支店'
   ),
 
   -- 各月の経常利益実績を計算
@@ -201,22 +201,22 @@ cumulative_recurring_profit AS (
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
       ON sa.detail_category = oe.detail_category
       AND sa.year_month = oe.year_month
-      AND oe.branch = '長崎支店'
+      AND oe.branch = '福岡支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` ni
       ON sa.detail_category = ni.detail_category
       AND sa.year_month = ni.year_month
-      AND ni.branch = '長崎支店'
+      AND ni.branch = '福岡支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` ne
       ON sa.detail_category = ne.detail_category
       AND sa.year_month = ne.year_month
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
       ON sa.detail_category = ml.detail_category
       AND sa.year_month = ml.year_month
-      AND ml.branch = '長崎支店'
+      AND ml.branch = '福岡支店'
     LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` he
       ON sa.detail_category = he.detail_category
       AND sa.year_month = he.year_month
-    WHERE sa.branch = '長崎支店'
+    WHERE sa.branch = '福岡支店'
   ),
 
   -- 期首を月ごとに計算
@@ -263,7 +263,7 @@ cumulative_recurring_profit AS (
 expense_data AS (
   SELECT
     oe.year_month,
-    -- parent_organizationを追加（detail_categoryから導出） - 長崎支店版
+    -- parent_organizationを追加（detail_categoryから導出） - 福岡支店版
     CASE
       WHEN oe.detail_category = '工事営業部計' THEN '工事営業部'
       WHEN oe.detail_category = '硝子建材営業部計' THEN '硝子建材営業部'
@@ -499,7 +499,7 @@ aggregated_metrics AS (
       SUM(COALESCE(misc_loss, 0)) AS misc_loss,
       SUM(COALESCE(hq_expense, 0)) AS hq_expense
     FROM expense_data
-    WHERE detail_category = '工事営業部計'
+    WHERE detail_category IN ('ガラス工事計', '山本（改装）')
     GROUP BY year_month, parent_organization
   ) ed
     ON cm.year_month = ed.year_month
@@ -561,7 +561,8 @@ aggregated_metrics AS (
   FROM consolidated_metrics cm
   LEFT JOIN expense_data ed
     ON cm.year_month = ed.year_month
-    AND cm.organization = ed.detail_category
+    AND cm.organization = ed.parent_organization
+    AND ed.detail_category = '硝子建材営業部'
   LEFT JOIN operating_expenses_target oet_build
     ON cm.year_month = oet_build.year_month
     AND oet_build.organization = '硝子建材営業部計'
@@ -582,8 +583,8 @@ aggregated_metrics AS (
   -- 最上位レベル（東京支店計）
   SELECT
     cm.year_month,
-    '長崎支店' AS organization,
-    '長崎支店計' AS detail_category,
+    '福岡支店' AS organization,
+    '福岡支店計' AS detail_category,
     -- ========== 売上・粗利は個人/部門データを集計 ==========
     SUM(cm.sales_actual) AS sales_actual,
     SUM(cm.sales_target) AS sales_target,
@@ -631,16 +632,16 @@ aggregated_metrics AS (
   ) ed ON cm.year_month = ed.year_month
   LEFT JOIN operating_expenses_target oet_tokyo
     ON cm.year_month = oet_tokyo.year_month
-    AND oet_tokyo.organization = '長崎支店'
-    AND oet_tokyo.detail_category = '長崎支店計'
+    AND oet_tokyo.organization = '福岡支店'
+    AND oet_tokyo.detail_category = '福岡支店計'
   LEFT JOIN operating_income_target oit_tokyo
     ON cm.year_month = oit_tokyo.year_month
-    AND oit_tokyo.organization = '長崎支店'
-    AND oit_tokyo.detail_category = '長崎支店計'
+    AND oit_tokyo.organization = '福岡支店'
+    AND oit_tokyo.detail_category = '福岡支店計'
   LEFT JOIN recurring_profit_target rpt_tokyo
     ON cm.year_month = rpt_tokyo.year_month
-    AND rpt_tokyo.organization = '長崎支店'
-    AND rpt_tokyo.detail_category = '長崎支店計'
+    AND rpt_tokyo.organization = '福岡支店'
+    AND rpt_tokyo.detail_category = '福岡支店計'
   GROUP BY cm.year_month
 ),
 
@@ -655,10 +656,10 @@ vertical_format AS (
     1 AS main_category_sort_order,
     '前年実績' AS secondary_category,
     1 AS secondary_category_sort_order,
-    '長崎支店' AS main_department,
+    '福岡支店' AS main_department,
     detail_category AS secondary_department,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -681,10 +682,10 @@ vertical_format AS (
     1,
     '本年目標',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -707,10 +708,10 @@ vertical_format AS (
     1,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -733,10 +734,10 @@ vertical_format AS (
     1,
     '前年比(%)',
     4,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -762,10 +763,10 @@ vertical_format AS (
     1,
     '目標比(%)',
     5,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -793,10 +794,10 @@ vertical_format AS (
     2,
     '前年実績',
     1,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -819,10 +820,10 @@ vertical_format AS (
     2,
     '本年目標',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -845,10 +846,10 @@ vertical_format AS (
     2,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -871,10 +872,10 @@ vertical_format AS (
     2,
     '前年比(%)',
     4,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -900,10 +901,10 @@ vertical_format AS (
     2,
     '目標比(%)',
     5,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -931,10 +932,10 @@ vertical_format AS (
     3,
     '前年実績',
     1,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -957,10 +958,10 @@ vertical_format AS (
     3,
     '本年目標',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -983,10 +984,10 @@ vertical_format AS (
     3,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1009,10 +1010,10 @@ vertical_format AS (
     3,
     '前年比(%)',
     4,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1038,10 +1039,10 @@ vertical_format AS (
     3,
     '目標比(%)',
     5,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1069,10 +1070,10 @@ vertical_format AS (
     4,
     '本年目標',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1096,10 +1097,10 @@ vertical_format AS (
     4,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1122,10 +1123,10 @@ vertical_format AS (
     4,
     '目標比(%)',
     5,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1153,10 +1154,10 @@ vertical_format AS (
     5,
     '本年目標',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1180,10 +1181,10 @@ vertical_format AS (
     5,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1206,10 +1207,10 @@ vertical_format AS (
     5,
     '目標比(%)',
     5,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1237,10 +1238,10 @@ vertical_format AS (
     6,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1265,10 +1266,10 @@ vertical_format AS (
     7,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1293,10 +1294,10 @@ vertical_format AS (
     8,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1321,10 +1322,10 @@ vertical_format AS (
     9,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1349,10 +1350,10 @@ vertical_format AS (
     10,
     '本年実績',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1377,10 +1378,10 @@ vertical_format AS (
     11,
     '本年目標',
     1,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1403,10 +1404,10 @@ vertical_format AS (
     11,
     '本年実績',
     2,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1429,10 +1430,10 @@ vertical_format AS (
     11,
     '累積本年目標',
     3,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
@@ -1456,10 +1457,10 @@ vertical_format AS (
     11,
     '累積本年実績',
     4,
-    '長崎支店',
+    '福岡支店',
     detail_category,
     CASE detail_category
-      WHEN '長崎支店計' THEN 100
+      WHEN '福岡支店計' THEN 100
       WHEN '工事営業部計' THEN 101
       WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
