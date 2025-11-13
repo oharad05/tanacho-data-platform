@@ -1,0 +1,71 @@
+# テーブルごとの主キー定義
+# 注: 重複判定は「全レコードが同一」で行うため、これは参考情報
+# 各テーブルの論理的な主キーを定義
+
+sales_target_and_achievements:
+  primary_keys:
+    - year_month
+    - branch
+    - metric_type
+    - organization
+    - detail_category
+
+billing_balance:
+  primary_keys:
+    - sales_month
+    - branch_code
+
+ledger_income:
+  primary_keys:
+    - year_month
+    - detail_category
+
+department_summary:
+  primary_keys:
+    - sales_accounting_period
+    - code
+
+internal_interest:
+  primary_keys:
+    - year_month
+    - branch
+    - category
+    - breakdown
+
+profit_plan_term:
+  primary_keys:
+    - period
+    - item
+
+profit_plan_term_nagasaki:
+  primary_keys:
+    - period
+    - item
+
+profit_plan_term_fukuoka:
+  primary_keys:
+    - period
+    - item
+
+ledger_loss:
+  primary_keys:
+    - year_month
+    - detail_category
+
+stocks:
+  primary_keys:
+    - year_month
+    - branch
+    - department
+    - category
+
+ms_allocation_ratio:
+  primary_keys:
+    - year_month
+    - branch
+    - department
+    - category
+
+ms_department_category:
+  primary_keys:
+    - department_category_code

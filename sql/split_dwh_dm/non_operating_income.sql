@@ -3,7 +3,10 @@
 DWH: 営業外収入(リベート・その他) - 全支店統合版
 ============================================================
 目的: 月次の営業外収入(リベート収入とその他収入)を集計グループ別に集計
-データソース: ledger_income, ms_allocation_ratio
+データソース:
+  - 東京支店: ledger_income (元帳_雑収入)
+  - 長崎支店: department_summary (部門集計表 コード8730, 8870)
+  - 案分比率: ms_allocation_ratio (業務部門案分)
 対象支店: 東京支店、長崎支店
 
 出力スキーマ:
@@ -21,49 +24,49 @@ WITH tokyo_income AS (
   SELECT
     DATE(accounting_month) AS year_month,
     '東京支店' AS branch,
-    -- ガラス工事計: 工事営業１課(11) + 業務課(18)
+    -- ガラス工事計: 工事営業１課(11) + 業務課(18) (全角・半角対応)
     SUM(
       CASE
-        WHEN own_department_code IN (11, 18) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code IN (11, 18) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS glass_construction_rebate,
     SUM(
       CASE
-        WHEN own_department_code IN (11, 18) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code IN (11, 18) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS glass_construction_other,
 
-    -- 山本(改装): 改修課(13)
+    -- 山本(改装): 改修課(13) (全角・半角対応)
     SUM(
       CASE
-        WHEN own_department_code = 13 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code = 13 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS yamamoto_rebate,
     SUM(
       CASE
-        WHEN own_department_code = 13 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code = 13 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS yamamoto_other,
 
-    -- 硝子建材営業部: 硝子建材営業課(20) or 硝子建材営業部(62)
+    -- 硝子建材営業部: 硝子建材営業課(20) or 硝子建材営業部(62) (全角・半角対応)
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code IN (20, 62) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS glass_sales_rebate,
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
+        WHEN own_department_code IN (20, 62) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
@@ -80,73 +83,41 @@ tokyo_unpivoted AS (
   SELECT year_month, branch, '硝子建材営業部', glass_sales_rebate, glass_sales_other FROM tokyo_income
 ),
 
-nagasaki_direct_income AS (
-  -- 長崎支店: 部門単位で集計 + 業務部案分
+nagasaki_department_data AS (
+  -- 長崎支店: 部門集計表から取得 (コード8730=雑収入リベート, 8870=雑損失その他)
   SELECT
-    DATE(accounting_month) AS year_month,
-    -- 工事営業部(61)のリベート
-    SUM(
-      CASE
-        WHEN own_department_code = 61 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS construction_rebate_direct,
-    -- 工事営業部(61)のその他
-    SUM(
-      CASE
-        WHEN own_department_code = 61 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS construction_other_direct,
+    sales_accounting_period AS year_month,
+    code,
+    COALESCE(construction_sales_department, 0) AS construction_dept_amount,
+    COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
+    COALESCE(operations_department, 0) AS operations_dept_amount
+  FROM `data-platform-prod-475201.corporate_data.department_summary`
+  WHERE code IN ('8730', '8870')  -- 8730=雑収入(リベート), 8870=雑損失(その他)
+),
 
-    -- 硝子建材営業部(62)のリベート
-    SUM(
-      CASE
-        WHEN own_department_code = 62 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS glass_sales_rebate_direct,
-    -- 硝子建材営業部(62)のその他
-    SUM(
-      CASE
-        WHEN own_department_code = 62 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS glass_sales_other_direct,
-
-    -- 業務部(63)のリベート(案分対象)
-    SUM(
-      CASE
-        WHEN own_department_code = 63 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS operations_rebate,
-    -- 業務部(63)のその他(案分対象)
-    SUM(
-      CASE
-        WHEN own_department_code = 63 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート')
-        THEN amount
-        ELSE 0
-      END
-    ) AS operations_other
-  FROM `data-platform-prod-475201.corporate_data.ledger_income`
-  WHERE own_department_code IN (61, 62, 63)  -- 長崎支店の部門コード
+nagasaki_direct_income AS (
+  -- 長崎支店: コード別に集計
+  SELECT
+    year_month,
+    MAX(CASE WHEN code = '8730' THEN construction_dept_amount ELSE 0 END) AS construction_rebate_direct,
+    MAX(CASE WHEN code = '8870' THEN construction_dept_amount ELSE 0 END) AS construction_other_direct,
+    MAX(CASE WHEN code = '8730' THEN glass_dept_amount ELSE 0 END) AS glass_sales_rebate_direct,
+    MAX(CASE WHEN code = '8870' THEN glass_dept_amount ELSE 0 END) AS glass_sales_other_direct,
+    MAX(CASE WHEN code = '8730' THEN operations_dept_amount ELSE 0 END) AS operations_rebate,
+    MAX(CASE WHEN code = '8870' THEN operations_dept_amount ELSE 0 END) AS operations_other
+  FROM nagasaki_department_data
   GROUP BY year_month
 ),
 
 nagasaki_allocation_ratios AS (
-  -- 案分比率の取得
+  -- 案分比率の取得 (業務部門案分)
   SELECT
     year_month,
     department,
     ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
+    AND category = '業務部門案分'
 ),
 
 nagasaki_allocated AS (
@@ -161,10 +132,10 @@ nagasaki_allocated AS (
   FROM nagasaki_direct_income d
   LEFT JOIN nagasaki_allocation_ratios r_construction
     ON d.year_month = r_construction.year_month
-    AND r_construction.department = '工事営業部'
+    AND r_construction.department = '工事'
   LEFT JOIN nagasaki_allocation_ratios r_glass
     ON d.year_month = r_glass.year_month
-    AND r_glass.department = '硝子建材営業部'
+    AND r_glass.department = '硝子建材'
 ),
 
 nagasaki_unpivoted AS (
