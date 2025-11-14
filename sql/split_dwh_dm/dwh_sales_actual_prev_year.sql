@@ -4,11 +4,11 @@ DWH: 売上高・粗利実績(前年実績) - 全支店統合版
 ============================================================
 目的: 月次の売上高と粗利の前年実績を支店・組織・担当者/部門別に集計
 データソース: sales_target_and_achievements
-対象支店: 東京支店、長崎支店
+対象支店: 東京支店、長崎支店、福岡支店
 
 出力スキーマ:
   - year_month: 対象年月(DATE型)
-  - branch: 支店名(東京支店、長崎支店)
+  - branch: 支店名(東京支店、長崎支店、福岡支店)
   - organization: 組織(工事営業部、硝子建材営業部)
   - detail_category: 詳細分類(担当者名または部門名)
   - sales_amount: 前年売上高(円)
@@ -30,12 +30,12 @@ WITH tokyo_prev_year AS (
     -- 担当者・部門別分類
     CASE
       -- 工事営業部の担当者別
-      WHEN branch_code = 11 AND staff_name = '佐々木康裕' THEN '佐々木(大成・鹿島他)'
-      WHEN branch_code = 11 AND staff_name = '岡本一郎' THEN '岡本(清水他)'
-      WHEN branch_code = 11 AND staff_name = '小笠原洋介' THEN '小笠原(三井住友他)'
-      WHEN branch_code = 11 AND staff_name = '高石麻友子' THEN '高石(内装・リニューアル)'
-      WHEN branch_code = 11 AND staff_name = '浅井一作' THEN '浅井(清水他)'
-      WHEN branch_code = 11 AND staff_name = '山本' THEN '山本(改装)'
+      WHEN branch_code = 11 AND staff_name = '佐々木康裕' THEN '佐々木（大成・鹿島他）'
+      WHEN branch_code = 11 AND staff_name = '岡本一郎' THEN '浅井（清水他）'
+      WHEN branch_code = 11 AND staff_name = '小笠原洋介' THEN '小笠原（三井住友他）'
+      WHEN branch_code = 11 AND staff_name = '高石麻友子' THEN '高石（内装・リニューアル）'
+      WHEN branch_code = 11 AND staff_name = '浅井一作' THEN '浅井（清水他）'
+      WHEN branch_code = 13 AND staff_name = '山本誠' THEN '山本（改装）'
       -- 硝子建材営業部の部門別
       WHEN branch_code = 25 AND division_code = 11 THEN '硝子工事'
       WHEN branch_code = 25 AND division_code = 21 THEN 'ビルサッシ'
@@ -51,7 +51,7 @@ WITH tokyo_prev_year AS (
   FROM
     `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
   WHERE
-    branch_code IN (11, 25)  -- 営業所コード: 011=工事営業部, 025=硝子建材営業部
+    branch_code IN (11, 13, 25)  -- 営業所コード: 011=工事営業部, 013=改修課, 025=硝子建材営業部
   GROUP BY
     year_month,
     branch,
@@ -93,8 +93,50 @@ nagasaki_prev_year AS (
     branch,
     organization,
     detail_category
+),
+
+fukuoka_prev_year AS (
+  SELECT
+    sales_accounting_period AS year_month,
+    '福岡支店' AS branch,
+    -- 組織識別
+    CASE
+      WHEN branch_code IN (30, 34) THEN '工事部'
+      WHEN branch_code = 31 THEN '硝子樹脂部'
+      WHEN branch_code = 37 THEN '福北センター'
+      ELSE 'その他'
+    END AS organization,
+    -- 部門別分類(福岡支店の組織構造に基づく)
+    CASE
+      -- 工事部(030)の部門別
+      WHEN branch_code = 30 AND division_code IN (10, 11) THEN '硝子工事'
+      WHEN branch_code = 30 AND division_code = 21 THEN 'ビルサッシ'
+      -- 内装工事(034)
+      WHEN branch_code = 34 THEN '内装工事'
+      -- 硝子樹脂部(031)の部門別
+      WHEN branch_code = 31 AND division_code IN (10, 11) THEN '硝子'
+      WHEN branch_code = 31 AND division_code IN (30, 31) THEN '樹脂'
+      WHEN branch_code = 31 AND division_code NOT IN (10, 11, 30, 31) THEN '建材'
+      -- 福北センター(037)
+      WHEN branch_code = 37 THEN '福北センター'
+      ELSE '未分類'
+    END AS detail_category,
+    -- 金額(円単位)
+    SUM(prev_year_sales_actual) AS sales_amount,
+    SUM(prev_year_gross_profit_actual) AS gross_profit_amount
+  FROM
+    `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
+  WHERE
+    branch_code IN (30, 31, 34, 37)  -- 営業所コード: 030=工事部, 031=硝子樹脂部, 034=内装工事, 037=福北センター
+  GROUP BY
+    year_month,
+    branch,
+    organization,
+    detail_category
 )
 
 SELECT * FROM tokyo_prev_year
 UNION ALL
-SELECT * FROM nagasaki_prev_year;
+SELECT * FROM nagasaki_prev_year
+UNION ALL
+SELECT * FROM fukuoka_prev_year;

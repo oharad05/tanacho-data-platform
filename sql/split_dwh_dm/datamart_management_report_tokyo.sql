@@ -70,10 +70,12 @@ operating_expenses AS (
   SELECT
     year_month,
     detail_category,
-    operating_expense_amount
+    operating_expense_amount,
+    operating_expense_prev_year
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
   WHERE branch = '東京支店'
 ),
+
 
 -- 4. 営業外収入（リベート・その他）
 non_operating_income AS (
@@ -268,6 +270,7 @@ expense_data AS (
     END AS parent_organization,
     oe.detail_category,
     oe.operating_expense_amount AS operating_expense,
+    oe.operating_expense_prev_year,  -- 前年営業経費を追加
     noi.rebate_income,
     noi.other_non_operating_income AS other_income,
     noe.interest_expense,
@@ -382,7 +385,7 @@ aggregated_metrics AS (
 
   UNION ALL
 
-  -- 中間レベル（ガラス工事計 = 佐々木+岡本+小笠原+高石+浅井）
+  -- 中間レベル（ガラス工事計 = 佐々木+小笠原+高石+浅井）
   SELECT
     cm.year_month,
     cm.organization,
@@ -400,11 +403,11 @@ aggregated_metrics AS (
     -- ========== 経費はexpense_dataから直接取得 ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
     MAX(oet_glass.target_amount) AS operating_expense_target,
-    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    MAX(ed.operating_expense_prev_year) AS operating_expense_prev_year,
     -- 営業利益の再計算
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     MAX(oit_glass.target_amount) AS operating_income_target,
-    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(cm.gross_profit_prev_year) - COALESCE(MAX(ed.operating_expense_prev_year), 0) AS operating_income_prev_year,
     -- 営業外収入
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
@@ -442,7 +445,7 @@ aggregated_metrics AS (
     AND rpt_glass.organization = '工事営業部'
     AND rpt_glass.detail_category = 'ガラス工事計'
   WHERE cm.organization = '工事営業部'
-    AND cm.detail_category IN ('佐々木（大成・鹿島他）', '岡本（清水他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
+    AND cm.detail_category IN ('佐々木（大成・鹿島他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
   GROUP BY cm.year_month, cm.organization
 
   UNION ALL
@@ -465,10 +468,10 @@ aggregated_metrics AS (
     -- ========== 経費はexpense_dataから集計（ガラス工事計 + 山本（改装）） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
     MAX(oet_eng.target_amount) AS operating_expense_target,
-    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    MAX(ed.operating_expense_prev_year) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     MAX(oit_eng.target_amount) AS operating_income_target,
-    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(cm.gross_profit_prev_year) - COALESCE(MAX(ed.operating_expense_prev_year), 0) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
     MAX(ed.interest_expense) AS non_operating_expenses,
@@ -490,6 +493,7 @@ aggregated_metrics AS (
       year_month,
       parent_organization,
       SUM(COALESCE(operating_expense, 0)) AS operating_expense,
+      SUM(COALESCE(operating_expense_prev_year, 0)) AS operating_expense_prev_year,
       SUM(COALESCE(rebate_income, 0)) AS rebate_income,
       SUM(COALESCE(other_income, 0)) AS other_income,
       SUM(COALESCE(interest_expense, 0)) AS interest_expense,
@@ -536,10 +540,10 @@ aggregated_metrics AS (
     -- ========== 経費はexpense_dataから取得（硝子建材営業部のみ） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
     MAX(oet_build.target_amount) AS operating_expense_target,
-    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    MAX(ed.operating_expense_prev_year) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     MAX(oit_build.target_amount) AS operating_income_target,
-    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(cm.gross_profit_prev_year) - COALESCE(MAX(ed.operating_expense_prev_year), 0) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
     MAX(ed.interest_expense) AS non_operating_expenses,
@@ -595,10 +599,10 @@ aggregated_metrics AS (
     -- ========== 経費はexpense_dataから集計（全組織の合計） ==========
     MAX(ed.operating_expense) AS operating_expense_actual,
     MAX(oet_tokyo.target_amount) AS operating_expense_target,
-    CAST(NULL AS FLOAT64) AS operating_expense_prev_year,
+    MAX(ed.operating_expense_prev_year) AS operating_expense_prev_year,
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) AS operating_income_actual,
     MAX(oit_tokyo.target_amount) AS operating_income_target,
-    CAST(NULL AS FLOAT64) AS operating_income_prev_year,
+    SUM(cm.gross_profit_prev_year) - COALESCE(MAX(ed.operating_expense_prev_year), 0) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income,
     MAX(ed.other_income) AS other_non_operating_income,
     MAX(ed.interest_expense) AS non_operating_expenses,
@@ -619,6 +623,7 @@ aggregated_metrics AS (
     SELECT
       year_month,
       SUM(COALESCE(operating_expense, 0)) AS operating_expense,
+      SUM(COALESCE(operating_expense_prev_year, 0)) AS operating_expense_prev_year,
       SUM(COALESCE(rebate_income, 0)) AS rebate_income,
       SUM(COALESCE(other_income, 0)) AS other_income,
       SUM(COALESCE(interest_expense, 0)) AS interest_expense,
@@ -662,7 +667,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -693,7 +697,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -724,7 +727,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -755,7 +757,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -789,7 +790,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -825,7 +825,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -856,7 +855,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -887,7 +885,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -918,7 +915,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -952,7 +948,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -988,7 +983,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1019,7 +1013,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1050,7 +1043,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1081,7 +1073,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1115,7 +1106,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1131,6 +1121,38 @@ vertical_format AS (
       WHEN NULLIF(gross_profit_margin_target, 0) IS NULL THEN NULL
       ELSE gross_profit_margin_actual / gross_profit_margin_target
     END
+  FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 営業経費: 前年実績
+  SELECT
+    year_month,
+    '営業経費',
+    4,
+    '前年実績',
+    1,
+    '東京支店',
+    detail_category,
+    CASE detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    operating_expense_prev_year
   FROM aggregated_metrics
 
   UNION ALL
@@ -1151,7 +1173,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1183,7 +1204,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1214,7 +1234,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1230,6 +1249,73 @@ vertical_format AS (
       WHEN NULLIF(operating_expense_target, 0) IS NULL THEN NULL
       ELSE operating_expense_actual / operating_expense_target
     END
+  FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 営業経費: 前年比
+  SELECT
+    year_month,
+    '営業経費',
+    4,
+    '前年比(%)',
+    4,
+    '東京支店',
+    detail_category,
+    CASE detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    CASE
+      WHEN NULLIF(operating_expense_prev_year, 0) IS NULL THEN NULL
+      ELSE operating_expense_actual / operating_expense_prev_year
+    END
+  FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 営業利益: 前年実績
+  SELECT
+    year_month,
+    '営業利益',
+    5,
+    '前年実績',
+    1,
+    '東京支店',
+    detail_category,
+    CASE detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    operating_income_prev_year
   FROM aggregated_metrics
 
   UNION ALL
@@ -1250,7 +1336,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1282,7 +1367,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1313,7 +1397,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1328,6 +1411,41 @@ vertical_format AS (
     CASE
       WHEN NULLIF(operating_income_target, 0) IS NULL THEN NULL
       ELSE operating_income_actual / operating_income_target
+    END
+  FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 営業利益: 前年比
+  SELECT
+    year_month,
+    '営業利益',
+    5,
+    '前年比(%)',
+    4,
+    '東京支店',
+    detail_category,
+    CASE detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    CASE
+      WHEN NULLIF(operating_income_prev_year, 0) IS NULL THEN NULL
+      ELSE operating_income_actual / operating_income_prev_year
     END
   FROM aggregated_metrics
 
@@ -1349,7 +1467,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1382,7 +1499,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1415,7 +1531,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1448,7 +1563,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1481,7 +1595,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1514,7 +1627,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1545,7 +1657,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1576,7 +1687,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1608,7 +1718,6 @@ vertical_format AS (
       WHEN '浅井（清水他）' THEN 4
       WHEN '小笠原（三井住友他）' THEN 5
       WHEN '高石（内装・リニューアル）' THEN 6
-      WHEN '岡本（清水他）' THEN 7
       WHEN 'ガラス工事計' THEN 8
       WHEN '山本（改装）' THEN 9
       WHEN '硝子建材営業部計' THEN 10
@@ -1651,13 +1760,12 @@ SELECT
   main_department,
   secondary_department,
   -- secondary_department_newlineに改行コードを挿入
-  REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+  REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
     secondary_department,
     '佐々木（大成・鹿島他）', '佐々木\n（大成・鹿島他）'),
     '浅井（清水他）', '浅井\n（清水他）'),
     '小笠原（三井住友他）', '小笠原\n（三井住友他）'),
     '高石（内装・リニューアル）', '高石\n（内装・リニューアル）'),
-    '岡本（清水他）', '岡本\n（清水他）'),
     '山本（改装）', '山本\n（改装）')
   AS secondary_department_newline,
   secondary_department_sort_order,

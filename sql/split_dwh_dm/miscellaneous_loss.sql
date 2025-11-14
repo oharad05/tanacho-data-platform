@@ -3,12 +3,15 @@
 DWH: 営業外費用(雑損失) - 全支店統合版
 ============================================================
 目的: 月次の営業外費用(雑損失)を集計グループ別に集計
-データソース: ledger_loss, ms_allocation_ratio
-対象支店: 東京支店、長崎支店
+データソース:
+  - 東京支店: ledger_loss
+  - 長崎支店: ledger_loss + ms_allocation_ratio
+  - 福岡支店: department_summary (code 8870) + ms_allocation_ratio
+対象支店: 東京支店、長崎支店、福岡支店
 
 出力スキーマ:
   - year_month: 対象年月(DATE型)
-  - branch: 支店名(東京支店、長崎支店)
+  - branch: 支店名(東京支店、長崎支店、福岡支店)
   - detail_category: 詳細分類(担当者名または部門名)
   - miscellaneous_loss_amount: 雑損失額(円)
 ============================================================
@@ -117,8 +120,80 @@ nagasaki_unpivoted AS (
   SELECT year_month, branch, '工事営業部計' AS detail_category, construction_loss_total AS miscellaneous_loss_amount FROM nagasaki_allocated
   UNION ALL
   SELECT year_month, branch, '硝子建材営業部計', glass_sales_loss_total FROM nagasaki_allocated
+),
+
+fukuoka_department_data AS (
+  -- 福岡支店: 部門集計表から取得 (コード8870=雑損失)
+  SELECT
+    sales_accounting_period AS year_month,
+    code,
+    COALESCE(construction_department, 0) AS construction_dept_amount,
+    COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
+    COALESCE(operations_department, 0) AS operations_dept_amount,
+    COALESCE(gs, 0) AS gs_amount,
+    COALESCE(
+      fukuhoku_daiwa_glass + fukuhoku_daiwa_welding + fukuhoku_daiwa_branch +
+      fukuhoku_nagawa + fukuhoku_moroguchi + fukuhoku_techno + fukuhoku_common, 0
+    ) AS fukuhoku_amount
+  FROM `data-platform-prod-475201.corporate_data.department_summary`
+  WHERE code = '8870'  -- 8870=雑損失
+),
+
+fukuoka_direct_loss AS (
+  SELECT
+    year_month,
+    MAX(CASE WHEN code = '8870' THEN construction_dept_amount ELSE 0 END) AS construction_loss_direct,
+    MAX(CASE WHEN code = '8870' THEN glass_dept_amount ELSE 0 END) AS glass_loss_direct,
+    MAX(CASE WHEN code = '8870' THEN operations_dept_amount ELSE 0 END) AS operations_loss,
+    MAX(CASE WHEN code = '8870' THEN gs_amount ELSE 0 END) AS gs_loss_direct,
+    MAX(CASE WHEN code = '8870' THEN fukuhoku_amount ELSE 0 END) AS fukuhoku_loss_direct
+  FROM fukuoka_department_data
+  GROUP BY year_month
+),
+
+fukuoka_allocation_ratios AS (
+  -- 案分比率の取得
+  SELECT
+    year_month,
+    department,
+    ratio
+  FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
+  WHERE branch = '福岡'
+),
+
+fukuoka_allocated AS (
+  -- 業務部損失の案分計算
+  SELECT
+    d.year_month,
+    '福岡支店' AS branch,
+    d.construction_loss_direct + (d.operations_loss * COALESCE(r_construction.ratio, 0)) AS construction_loss_total,
+    d.glass_loss_direct + (d.operations_loss * COALESCE(r_glass.ratio, 0)) AS glass_loss_total,
+    d.gs_loss_direct + (d.operations_loss * COALESCE(r_gs.ratio, 0)) AS gs_loss_total,
+    d.fukuhoku_loss_direct AS fukuhoku_loss_total  -- 福北センターは案分なし
+  FROM fukuoka_direct_loss d
+  LEFT JOIN fukuoka_allocation_ratios r_construction
+    ON d.year_month = r_construction.year_month
+    AND r_construction.department = '工事'
+  LEFT JOIN fukuoka_allocation_ratios r_glass
+    ON d.year_month = r_glass.year_month
+    AND r_glass.department IN ('硝子建材', '樹脂建材')
+  LEFT JOIN fukuoka_allocation_ratios r_gs
+    ON d.year_month = r_gs.year_month
+    AND r_gs.department = 'GSセンター'
+),
+
+fukuoka_unpivoted AS (
+  SELECT year_month, branch, '工事部計' AS detail_category, construction_loss_total AS miscellaneous_loss_amount FROM fukuoka_allocated
+  UNION ALL
+  SELECT year_month, branch, '硝子樹脂計', glass_loss_total FROM fukuoka_allocated
+  UNION ALL
+  SELECT year_month, branch, 'GSセンター', gs_loss_total FROM fukuoka_allocated
+  UNION ALL
+  SELECT year_month, branch, '福北センター', fukuhoku_loss_total FROM fukuoka_allocated
 )
 
 SELECT * FROM tokyo_unpivoted
 UNION ALL
-SELECT * FROM nagasaki_unpivoted;
+SELECT * FROM nagasaki_unpivoted
+UNION ALL
+SELECT * FROM fukuoka_unpivoted;
