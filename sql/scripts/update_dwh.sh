@@ -47,7 +47,7 @@ echo "[4/9] 営業経費を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_operating_expenses.sql"
+  < "${SQL_DIR}/operating_expenses.sql"
 
 echo "[5/9] 営業外収入を更新中..."
 bq query \

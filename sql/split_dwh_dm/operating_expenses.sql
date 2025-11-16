@@ -224,13 +224,22 @@ fukuoka_direct_expenses AS (
 ),
 
 fukuoka_allocation_ratios AS (
-  -- 案分比率の取得
+  -- 案分比率の取得(業務部門案分のみ)、硝子樹脂は合算
   SELECT
     year_month,
-    department,
-    ratio
+    CASE
+      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
+      ELSE department
+    END AS department,
+    SUM(ratio) AS ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '福岡'
+    AND category = '業務部門案分'
+  GROUP BY year_month,
+    CASE
+      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
+      ELSE department
+    END
 ),
 
 fukuoka_allocated AS (
@@ -248,7 +257,7 @@ fukuoka_allocated AS (
     AND r_construction.department = '工事'
   LEFT JOIN fukuoka_allocation_ratios r_glass
     ON d.year_month = r_glass.year_month
-    AND r_glass.department IN ('硝子建材', '樹脂建材')
+    AND r_glass.department = '硝子樹脂'
   LEFT JOIN fukuoka_allocation_ratios r_gs
     ON d.year_month = r_gs.year_month
     AND r_gs.department = 'GSセンター'

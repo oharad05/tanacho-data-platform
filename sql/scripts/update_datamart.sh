@@ -9,19 +9,22 @@
 # 前提条件: update_dwh.shの実行完了
 #
 # 処理フロー:
+#   0. 中間テーブル作成       → aggregated_metrics_all_branches (DWH層)
 #   1. 東京支店DataMart作成 → management_documents_all_period
 #   2. 長崎支店DataMart作成 → management_documents_all_period_nagasaki
 #   3. 福岡支店DataMart作成 → management_documents_all_period_fukuoka
 #   4. 統合DataMart作成     → management_documents_all_period_all
 #
-# 重要: 統合DataMartは個別支店DataMartをUNIONするため、
-#       必ず個別支店DataMart作成後に実行すること
+# 重要:
+#   - aggregated_metrics_all_branchesは個別支店DataMartの前提テーブル
+#   - 統合DataMartは個別支店DataMartをUNIONするため、必ず個別支店DataMart作成後に実行
 # ============================================================
 
 set -e  # エラー時に即座に終了
 
 PROJECT_ID="data-platform-prod-475201"
 DATASET_DM="corporate_data_dm"
+DATASET_DWH="corporate_data_dwh"
 SQL_DIR="$(dirname "$0")/../split_dwh_dm"
 
 echo "========================================="
@@ -31,10 +34,27 @@ echo "データセット: ${DATASET_DM}"
 echo "========================================="
 
 # ============================================================
+# 0. 中間テーブル作成 (aggregated_metrics_all_branches)
+# ============================================================
+echo ""
+echo "0/4: 中間テーブル(aggregated_metrics_all_branches)を作成中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/aggregated_metrics_all_branches.sql"
+
+if [ $? -eq 0 ]; then
+  echo "✓ 中間テーブル作成完了"
+else
+  echo "✗ 中間テーブル作成失敗"
+  exit 1
+fi
+
+# ============================================================
 # 1. 東京支店DataMart作成
 # ============================================================
 echo ""
-echo "1/3: 東京支店DataMartを作成中..."
+echo "1/4: 東京支店DataMartを作成中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
@@ -51,7 +71,7 @@ fi
 # 2. 長崎支店DataMart作成
 # ============================================================
 echo ""
-echo "2/3: 長崎支店DataMartを作成中..."
+echo "2/4: 長崎支店DataMartを作成中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
