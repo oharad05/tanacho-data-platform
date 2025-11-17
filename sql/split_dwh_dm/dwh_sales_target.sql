@@ -104,60 +104,68 @@ tokyo_target AS (
   SELECT period, '東京支店', 'gross_profit', '硝子建材営業部', 'その他', others FROM tokyo_profit_plan WHERE item = '売上総利益'
 ),
 
+nagasaki_profit_plan AS (
+  SELECT
+    period,
+    item,
+    nagasaki_branch_total,
+    glass_construction_dept,
+    building_sash,
+    construction_sales_department_total,
+    glass_construction,
+    sash_construction,
+    glass_sales,
+    sash_sales,
+    finished_products,
+    glass_building_material_sales_department_total
+  FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
+),
+
 nagasaki_target AS (
   -- 売上高目標
-  SELECT
-    sales_accounting_period AS year_month,
-    '長崎支店' AS branch,
-    'sales' AS metric_type,
-    CASE
-      WHEN branch_code = 61 THEN '工事営業部'
-      WHEN branch_code IN (65, 66) THEN '硝子建材営業部'
-      ELSE 'その他'
-    END AS organization,
-    CASE
-      -- 工事営業部(061)の部門別
-      WHEN branch_code = 61 AND division_code = 11 THEN 'ガラス工事'
-      WHEN branch_code = 61 AND division_code = 21 THEN 'ビルサッシ'
-      -- 硝子建材営業部(065, 066)の部門別
-      WHEN branch_code IN (65, 66) AND division_code = 11 THEN '硝子工事'
-      WHEN branch_code IN (65, 66) AND division_code = 20 THEN 'サッシ工事'
-      WHEN branch_code IN (65, 66) AND division_code = 10 THEN '硝子販売'
-      WHEN branch_code IN (65, 66) AND division_code IN (22, 23, 24, 25, 30, 31, 40, 41, 50, 70, 71, 99) THEN '完成品(その他)'
-      ELSE '未分類'
-    END AS detail_category,
-    SUM(sales_target) AS target_amount
-  FROM `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
-  WHERE branch_code IN (61, 65, 66)
-  GROUP BY year_month, branch, metric_type, organization, detail_category
+  SELECT period AS year_month, '長崎支店' AS branch, 'sales' AS metric_type, '長崎支店' AS organization, '長崎支店計' AS detail_category, nagasaki_branch_total * 1000 AS target_amount
+  FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '工事営業部', '工事営業部計', construction_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '工事営業部', 'ガラス工事', glass_construction_dept * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '工事営業部', 'ビルサッシ', building_sash * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', '硝子建材営業部計', glass_building_material_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', '硝子工事', glass_construction * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', 'サッシ工事', sash_construction * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', '硝子販売', glass_sales * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', 'サッシ販売', sash_sales * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
+  UNION ALL
+  SELECT period, '長崎支店', 'sales', '硝子建材営業部', '完成品(その他)', finished_products * 1000 FROM nagasaki_profit_plan WHERE item = '売上高'
 
   UNION ALL
 
   -- 売上総利益目標
-  SELECT
-    sales_accounting_period AS year_month,
-    '長崎支店' AS branch,
-    'gross_profit' AS metric_type,
-    CASE
-      WHEN branch_code = 61 THEN '工事営業部'
-      WHEN branch_code IN (65, 66) THEN '硝子建材営業部'
-      ELSE 'その他'
-    END AS organization,
-    CASE
-      -- 工事営業部(061)の部門別
-      WHEN branch_code = 61 AND division_code = 11 THEN 'ガラス工事'
-      WHEN branch_code = 61 AND division_code = 21 THEN 'ビルサッシ'
-      -- 硝子建材営業部(065, 066)の部門別
-      WHEN branch_code IN (65, 66) AND division_code = 11 THEN '硝子工事'
-      WHEN branch_code IN (65, 66) AND division_code = 20 THEN 'サッシ工事'
-      WHEN branch_code IN (65, 66) AND division_code = 10 THEN '硝子販売'
-      WHEN branch_code IN (65, 66) AND division_code IN (22, 23, 24, 25, 30, 31, 40, 41, 50, 70, 71, 99) THEN '完成品(その他)'
-      ELSE '未分類'
-    END AS detail_category,
-    SUM(gross_profit_target) AS target_amount
-  FROM `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
-  WHERE branch_code IN (61, 65, 66)
-  GROUP BY year_month, branch, metric_type, organization, detail_category
+  SELECT period, '長崎支店', 'gross_profit', '長崎支店', '長崎支店計', nagasaki_branch_total * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '工事営業部', '工事営業部計', construction_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '工事営業部', 'ガラス工事', glass_construction_dept * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '工事営業部', 'ビルサッシ', building_sash * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', '硝子建材営業部計', glass_building_material_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', '硝子工事', glass_construction * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', 'サッシ工事', sash_construction * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', '硝子販売', glass_sales * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', 'サッシ販売', sash_sales * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
+  UNION ALL
+  SELECT period, '長崎支店', 'gross_profit', '硝子建材営業部', '完成品(その他)', finished_products * 1000 FROM nagasaki_profit_plan WHERE item = '売上総利益'
 ),
 
 fukuoka_profit_plan AS (

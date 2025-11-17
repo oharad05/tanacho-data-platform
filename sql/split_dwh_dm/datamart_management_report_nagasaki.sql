@@ -34,10 +34,55 @@ aggregated_metrics AS (
   WHERE branch = '長崎支店'
 ),
 -- ============================================================
+-- 経常利益の累積計算（期首4/1から当月まで）
+-- ============================================================
+cumulative_recurring_profit AS (
+  WITH
+  -- 全組織×detail_category×月の組み合わせを取得
+  org_categories_months AS (
+    SELECT DISTINCT year_month, detail_category
+    FROM aggregated_metrics
+    WHERE recurring_profit_actual IS NOT NULL
+  ),
+
+  -- 期首を月ごとに計算（期首は4/1）
+  fiscal_year_starts AS (
+    SELECT DISTINCT
+      year_month,
+      CASE
+        WHEN EXTRACT(MONTH FROM year_month) >= 4
+        THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
+        ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
+      END AS fiscal_start_date
+    FROM org_categories_months
+  )
+
+  -- 累積計算（各月ごとに期首から当月までの累積）
+  SELECT
+    am_target.year_month,
+    am_target.detail_category,
+    SUM(am_source.recurring_profit_actual) AS cumulative_actual,
+    -- 目標も累積
+    (SELECT SUM(recurring_profit_target)
+     FROM aggregated_metrics am_inner
+     CROSS JOIN fiscal_year_starts fys_inner
+     WHERE am_inner.detail_category = am_target.detail_category
+     AND am_inner.year_month >= fys_inner.fiscal_start_date
+     AND am_inner.year_month <= am_target.year_month
+     AND fys_inner.year_month = am_target.year_month) AS cumulative_target
+  FROM aggregated_metrics am_target
+  CROSS JOIN fiscal_year_starts fys
+  LEFT JOIN aggregated_metrics am_source
+    ON am_target.detail_category = am_source.detail_category
+    AND am_source.year_month >= fys.fiscal_start_date
+    AND am_source.year_month <= am_target.year_month
+  WHERE fys.year_month = am_target.year_month
+    AND am_target.recurring_profit_actual IS NOT NULL
+  GROUP BY am_target.year_month, am_target.detail_category
+),
+-- ============================================================
 -- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
--- ============================================================
--- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
 vertical_format AS (
   -- 売上高: 前年実績
@@ -932,7 +977,7 @@ vertical_format AS (
     recurring_profit_actual
   FROM aggregated_metrics
   UNION ALL
-  -- 経常利益: 累積本年目標（現状は1ヶ月分のみなので当月目標と同じ）
+  -- 経常利益: 累積本年目標（期首4/1からの累積）
   SELECT
     year_month,
     '経常利益',
@@ -955,11 +1000,11 @@ vertical_format AS (
       WHEN 'その他' THEN 110
       ELSE 199
     END,
-    COALESCE(recurring_profit_target, 0)
-  FROM aggregated_metrics
-  WHERE recurring_profit_target IS NOT NULL
+    COALESCE(cumulative_target, 0)
+  FROM cumulative_recurring_profit
+  WHERE cumulative_target IS NOT NULL
   UNION ALL
-  -- 経常利益: 累積本年実績（現状は1ヶ月分のみなので当月実績と同じ）
+  -- 経常利益: 累積本年実績（期首4/1からの累積）
   SELECT
     year_month,
     '経常利益',
@@ -982,9 +1027,8 @@ vertical_format AS (
       WHEN 'その他' THEN 110
       ELSE 199
     END,
-    COALESCE(recurring_profit_actual, 0)
-  FROM aggregated_metrics
-  WHERE recurring_profit_actual IS NOT NULL
+    COALESCE(cumulative_actual, 0)
+  FROM cumulative_recurring_profit
 )
 
 SELECT

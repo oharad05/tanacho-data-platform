@@ -49,29 +49,29 @@ bq query \
   --use_legacy_sql=false \
   < "${SQL_DIR}/operating_expenses.sql"
 
-echo "[5/9] 営業外収入を更新中..."
+echo "[5/11] 営業外収入を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_non_operating_income.sql"
+  < "${SQL_DIR}/non_operating_income.sql"
 
-echo "[6/9] 営業外費用を更新中..."
+echo "[6/11] 営業外費用を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_non_operating_expenses.sql"
+  < "${SQL_DIR}/non_operating_expenses.sql"
 
-echo "[7/9] 雑損失を更新中..."
+echo "[7/11] 雑損失を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_miscellaneous_loss.sql"
+  < "${SQL_DIR}/miscellaneous_loss.sql"
 
-echo "[8/9] 本店管理費を更新中..."
+echo "[8/11] 本店管理費を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_head_office_expenses.sql"
+  < "${SQL_DIR}/head_office_expenses.sql"
 
 echo "[9/11] 経常利益目標を更新中..."
 bq query \
@@ -83,13 +83,13 @@ echo "[10/11] 営業経費目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_operating_expenses_target.sql"
+  < "${SQL_DIR}/operating_expenses_target.sql"
 
 echo "[11/11] 営業利益目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
-  < "${SQL_DIR}/dwh_operating_income_target.sql"
+  < "${SQL_DIR}/operating_income_target.sql"
 
 echo ""
 echo "========================================="

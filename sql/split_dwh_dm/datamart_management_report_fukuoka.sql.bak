@@ -34,52 +34,7 @@ aggregated_metrics AS (
   WHERE branch = '福岡支店'
 ),
 -- ============================================================
--- 経常利益の累積計算（期首4/1から当月まで）
--- ============================================================
-cumulative_recurring_profit AS (
-  WITH
-  -- 全組織×detail_category×月の組み合わせを取得
-  org_categories_months AS (
-    SELECT DISTINCT year_month, detail_category
-    FROM aggregated_metrics
-    WHERE recurring_profit_actual IS NOT NULL
-  ),
-
-  -- 期首を月ごとに計算（期首は4/1）
-  fiscal_year_starts AS (
-    SELECT DISTINCT
-      year_month,
-      CASE
-        WHEN EXTRACT(MONTH FROM year_month) >= 4
-        THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
-        ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
-      END AS fiscal_start_date
-    FROM org_categories_months
-  )
-
-  -- 累積計算（各月ごとに期首から当月までの累積）
-  SELECT
-    am_target.year_month,
-    am_target.detail_category,
-    SUM(am_source.recurring_profit_actual) AS cumulative_actual,
-    -- 目標も累積
-    (SELECT SUM(recurring_profit_target)
-     FROM aggregated_metrics am_inner
-     CROSS JOIN fiscal_year_starts fys_inner
-     WHERE am_inner.detail_category = am_target.detail_category
-     AND am_inner.year_month >= fys_inner.fiscal_start_date
-     AND am_inner.year_month <= am_target.year_month
-     AND fys_inner.year_month = am_target.year_month) AS cumulative_target
-  FROM aggregated_metrics am_target
-  CROSS JOIN fiscal_year_starts fys
-  LEFT JOIN aggregated_metrics am_source
-    ON am_target.detail_category = am_source.detail_category
-    AND am_source.year_month >= fys.fiscal_start_date
-    AND am_source.year_month <= am_target.year_month
-  WHERE fys.year_month = am_target.year_month
-    AND am_target.recurring_profit_actual IS NOT NULL
-  GROUP BY am_target.year_month, am_target.detail_category
-),
+-- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
 -- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
@@ -95,16 +50,16 @@ vertical_format AS (
     detail_category AS secondary_department,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END AS secondary_department_sort_order,
     sales_prev_year AS value
@@ -121,16 +76,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     sales_target
@@ -147,16 +102,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     sales_actual
@@ -173,16 +128,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -202,16 +157,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -233,16 +188,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_prev_year
@@ -259,16 +214,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_target
@@ -285,16 +240,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_actual
@@ -311,16 +266,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -340,16 +295,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -371,16 +326,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_margin_prev_year
@@ -397,16 +352,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_margin_target
@@ -423,16 +378,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     gross_profit_margin_actual
@@ -449,16 +404,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -478,16 +433,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -509,16 +464,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_expense_target
@@ -536,16 +491,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_expense_prev_year
@@ -564,16 +519,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_expense_actual
@@ -590,16 +545,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -621,16 +576,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -652,16 +607,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_income_prev_year
@@ -680,16 +635,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_income_target
@@ -707,16 +662,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     operating_income_actual
@@ -733,16 +688,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -764,16 +719,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     CASE
@@ -795,16 +750,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     rebate_income
@@ -823,16 +778,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     other_non_operating_income
@@ -851,16 +806,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     non_operating_expenses
@@ -879,16 +834,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     miscellaneous_loss
@@ -907,16 +862,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     head_office_expense
@@ -935,16 +890,16 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     recurring_profit_target
@@ -961,22 +916,22 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
     recurring_profit_actual
   FROM aggregated_metrics
   UNION ALL
-  -- 経常利益: 累積本年目標（期首4/1からの累積）
+  -- 経常利益: 累積本年目標（現状は1ヶ月分のみなので当月目標と同じ）
   SELECT
     year_month,
     '経常利益',
@@ -987,23 +942,23 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
-    COALESCE(cumulative_target, 0)
-  FROM cumulative_recurring_profit
-  WHERE cumulative_target IS NOT NULL
+    COALESCE(recurring_profit_target, 0)
+  FROM aggregated_metrics
+  WHERE recurring_profit_target IS NOT NULL
   UNION ALL
-  -- 経常利益: 累積本年実績（期首4/1からの累積）
+  -- 経常利益: 累積本年実績（現状は1ヶ月分のみなので当月実績と同じ）
   SELECT
     year_month,
     '経常利益',
@@ -1014,20 +969,21 @@ vertical_format AS (
     detail_category,
     CASE detail_category
       WHEN '福岡支店計' THEN 100
-      WHEN '工事部計' THEN 101
-      WHEN '硝子工事' THEN 102
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
-      WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
-      WHEN '硝子' THEN 106
-      WHEN '建材' THEN 107
-      WHEN '樹脂' THEN 108
-      WHEN 'GSセンター' THEN 109
-      WHEN '福北センター' THEN 110
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
       ELSE 199
     END,
-    COALESCE(cumulative_actual, 0)
-  FROM cumulative_recurring_profit
+    COALESCE(recurring_profit_actual, 0)
+  FROM aggregated_metrics
+  WHERE recurring_profit_actual IS NOT NULL
 )
 
 SELECT

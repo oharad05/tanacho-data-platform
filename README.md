@@ -14,6 +14,11 @@ Google Drive上の月次データをGCSに取り込み、BigQueryに連携し、
   - 例: 9/1のレポートの場合、実行日 = 2025年10月
 - **作成月**: 実行日の前月（=全ての数字が集まっている最新の月）
   - 例: 9/1のレポートの場合、作成月 = 2025年9月
+- **期首**: 会計年度の開始日 = **4月1日**
+  - 4月以降の月の期首: その年の4月1日
+  - 1-3月の期首: 前年の4月1日
+  - 例: 2024年9月の期首 = 2024年4月1日
+  - 例: 2025年2月の期首 = 2024年4月1日
 
 ### 営業外費用（社内利息）の計算における適用例
 
@@ -301,6 +306,54 @@ cd sql/split_dwh_dm
 **注意事項**:
 - DataMartでは「硝子樹脂計」として表示されるが、部門名は「硝子建材部門」
 - GSセンター・福北センターは独立した集計単位
+
+## 会計年度と累積計算
+
+### 期首（会計年度開始日）
+
+**期首日: 4月1日**
+
+全ての累積計算（経常利益の累積本年実績・累積本年目標）は、期首から当月までの合算値として計算されます。
+
+### 期首計算ロジック
+
+```sql
+-- 期首を月ごとに計算（期首は4/1）
+fiscal_year_starts AS (
+  SELECT DISTINCT
+    year_month,
+    CASE
+      WHEN EXTRACT(MONTH FROM year_month) >= 4
+      THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
+      ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
+    END AS fiscal_start_date
+  FROM org_categories_months
+)
+```
+
+### 累積計算の対象
+
+- **累積本年実績（経常利益）**: 期首（4/1）から当月までの経常利益実績の合計
+- **累積本年目標（経常利益）**: 期首（4/1）から当月までの経常利益目標の合計
+
+### 実装箇所
+
+累積計算は以下のDataMart SQLファイルに実装されています:
+- `sql/split_dwh_dm/datamart_management_report_tokyo.sql`
+- `sql/split_dwh_dm/datamart_management_report_fukuoka.sql`
+- `sql/split_dwh_dm/datamart_management_report_nagasaki.sql`
+
+各ファイルの`cumulative_recurring_profit` CTEで、期首から当月までの累積計算を実施しています。
+
+### 累積計算の例
+
+| 対象月 | 期首 | 累積範囲 |
+|--------|------|----------|
+| 2024年4月 | 2024年4月1日 | 4月のみ |
+| 2024年9月 | 2024年4月1日 | 4月〜9月 |
+| 2025年2月 | 2024年4月1日 | 2024年4月〜2025年2月 |
+| 2025年4月 | 2025年4月1日 | 2025年4月のみ |
+| 2025年9月 | 2025年4月1日 | 2025年4月〜9月 |
 
 ## 開発環境
 

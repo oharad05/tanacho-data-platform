@@ -55,6 +55,18 @@ TABLE_CONFIG = {
     "ledger_loss": {
         "partition_field": "slip_date",
         "clustering_fields": ["classification_type"]
+    },
+    "customer_sales_target_and_achievements": {
+        "partition_field": "sales_accounting_period",
+        "clustering_fields": ["branch_code", "customer_code"]
+    },
+    "construction_progress_days_amount": {
+        "partition_field": "property_period",
+        "clustering_fields": ["branch_code", "property_number"]
+    },
+    "construction_progress_days_final_date": {
+        "partition_field": "final_billing_sales_date",
+        "clustering_fields": ["property_number"]
     }
 }
 
@@ -88,6 +100,17 @@ def convert_date_format(value: Any, date_type: str, column_name: str = '') -> st
     if pd.isna(value) or value == '' or value is None:
         return ''
 
+    # 無効な日付値を空文字列に変換
+    value_str = str(value)
+    if value_str in ['0000/00/00', '0000-00-00', '00/00/0000', '0', 'NaT']:
+        return ''
+
+    # 誤った形式の日付を修正 (例: "0223/03/25" → "2023/03/25")
+    import re
+    match = re.match(r'^0(\d{3})/(\d{2})/(\d{2})$', value_str)
+    if match:
+        value_str = f"2{match.group(1)}/{match.group(2)}/{match.group(3)}"
+
     # 数値の場合の処理
     if isinstance(value, (int, float)):
         # Excelのシリアル日付
@@ -113,8 +136,6 @@ def convert_date_format(value: Any, date_type: str, column_name: str = '') -> st
             except:
                 pass
 
-    # 文字列に変換
-    value_str = str(value)
 
     # 「年月」特殊処理（例: "2025年9月" → "2025-09-01"）
     if '年' in value_str and '月' in value_str:

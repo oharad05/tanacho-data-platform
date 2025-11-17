@@ -76,8 +76,9 @@ nagasaki_prev_year AS (
       WHEN branch_code = 61 AND division_code = 21 THEN 'ビルサッシ'
       -- 硝子建材営業部(065, 066)の部門別
       WHEN branch_code IN (65, 66) AND division_code = 11 THEN '硝子工事'
-      WHEN branch_code IN (65, 66) AND division_code = 20 THEN 'サッシ工事'
+      WHEN branch_code IN (65, 66) AND division_code = 21 THEN 'サッシ工事'
       WHEN branch_code IN (65, 66) AND division_code = 10 THEN '硝子販売'
+      WHEN branch_code IN (65, 66) AND division_code = 20 THEN 'サッシ販売'
       WHEN branch_code IN (65, 66) AND division_code IN (22, 23, 24, 25, 30, 31, 40, 41, 50, 70, 71, 99) THEN '完成品(その他)'
       ELSE '未分類'
     END AS detail_category,
