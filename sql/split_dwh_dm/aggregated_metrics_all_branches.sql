@@ -851,13 +851,13 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
     ON sa.year_month = oe.year_month AND oe.detail_category = '硝子樹脂部計' AND oe.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-    ON sa.year_month = noi.year_month AND noi.detail_category = '硝子樹脂部計' AND noi.branch = '福岡支店'
+    ON sa.year_month = noi.year_month AND noi.detail_category = '硝子樹脂計' AND noi.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` noe
-    ON sa.year_month = noe.year_month AND noe.detail_category = '硝子樹脂部計'
+    ON sa.year_month = noe.year_month AND noe.detail_category = '硝子樹脂計'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
-    ON sa.year_month = ml.year_month AND ml.detail_category = '硝子樹脂部計' AND ml.branch = '福岡支店'
+    ON sa.year_month = ml.year_month AND ml.detail_category = '硝子樹脂計' AND ml.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` hoe
-    ON sa.year_month = hoe.year_month AND hoe.detail_category = '硝子樹脂部計'
+    ON sa.year_month = hoe.year_month AND hoe.detail_category = '硝子樹脂計'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON sa.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = '硝子樹脂部計' AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
@@ -870,7 +870,50 @@ tokyo_consolidated AS (
 
   UNION ALL
 
-  -- 支店レベル（福岡支店計）
+  -- GSセンター（売上なし、費用のみ）
+  SELECT
+    oe.year_month,
+    'GSセンター' AS organization,
+    'GSセンター' AS detail_category,
+    0 AS sales_actual,
+    NULL AS sales_target,
+    0 AS sales_prev_year,
+    0 AS gross_profit_actual,
+    NULL AS gross_profit_target,
+    0 AS gross_profit_prev_year,
+    NULL AS gross_profit_margin_actual,
+    NULL AS gross_profit_margin_target,
+    NULL AS gross_profit_margin_prev_year,
+    oe.operating_expense_amount AS operating_expense_actual,
+    NULL AS operating_expense_target,
+    NULL AS operating_expense_prev_year,
+    (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_actual,
+    NULL AS operating_income_target,
+    (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_prev_year,
+    noi.rebate_income,
+    noi.other_non_operating_income,
+    NULL AS non_operating_expenses,
+    ml.miscellaneous_loss_amount AS miscellaneous_loss,
+    NULL AS head_office_expense,
+    (
+      0
+      - COALESCE(oe.operating_expense_amount, 0)
+      + COALESCE(noi.rebate_income, 0)
+      + COALESCE(noi.other_non_operating_income, 0)
+      - COALESCE(ml.miscellaneous_loss_amount, 0)
+    ) AS recurring_profit_actual,
+    NULL AS recurring_profit_target
+  FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
+    ON oe.year_month = noi.year_month AND noi.detail_category = 'GSセンター' AND noi.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
+    ON oe.year_month = ml.year_month AND ml.detail_category = 'GSセンター' AND ml.branch = '福岡支店'
+  WHERE oe.branch = '福岡支店'
+    AND oe.detail_category = 'GSセンター'
+
+  UNION ALL
+
+  -- 支店レベル（福岡支店計）※各部署の合計を集計
   SELECT
     sa.year_month,
     '福岡支店' AS organization,
@@ -884,25 +927,82 @@ tokyo_consolidated AS (
     SAFE_DIVIDE(SUM(sa.gross_profit_amount), SUM(sa.sales_amount)) AS gross_profit_margin_actual,
     SAFE_DIVIDE(MAX(st_gp.target_amount), MAX(st_sales.target_amount)) AS gross_profit_margin_target,
     SAFE_DIVIDE(SUM(sap.gross_profit_amount), SUM(sap.sales_amount)) AS gross_profit_margin_prev_year,
-    MAX(oe.operating_expense_amount) AS operating_expense_actual,
+    (
+      SELECT SUM(operating_expense_amount)
+      FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+      WHERE branch = '福岡支店' AND year_month = sa.year_month
+    ) AS operating_expense_actual,
     MAX(oet.target_amount) AS operating_expense_target,
-    MAX(oe.operating_expense_prev_year),
-    (SUM(sa.gross_profit_amount) - COALESCE(MAX(oe.operating_expense_amount), 0)) AS operating_income_actual,
+    (
+      SELECT SUM(operating_expense_prev_year)
+      FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+      WHERE branch = '福岡支店' AND year_month = sa.year_month
+    ) AS operating_expense_prev_year,
+    (
+      SUM(sa.gross_profit_amount) - COALESCE((
+        SELECT SUM(operating_expense_amount)
+        FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+    ) AS operating_income_actual,
     MAX(oit.target_amount) AS operating_income_target,
-    (SUM(sap.gross_profit_amount) - COALESCE(MAX(oe.operating_expense_prev_year), 0)) AS operating_income_prev_year,
-    MAX(noi.rebate_income) AS rebate_income,
-    MAX(noi.other_non_operating_income),
-    MAX(noe.interest_expense) AS non_operating_expenses,
-    MAX(ml.miscellaneous_loss_amount) AS miscellaneous_loss,
-    MAX(hoe.head_office_expense),
+    (
+      SUM(sap.gross_profit_amount) - COALESCE((
+        SELECT SUM(operating_expense_prev_year)
+        FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+    ) AS operating_income_prev_year,
+    (
+      SELECT SUM(rebate_income)
+      FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+      WHERE branch = '福岡支店' AND year_month = sa.year_month
+    ) AS rebate_income,
+    (
+      SELECT SUM(other_non_operating_income)
+      FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+      WHERE branch = '福岡支店' AND year_month = sa.year_month
+    ) AS other_non_operating_income,
+    NULL AS non_operating_expenses,
+    (
+      SELECT SUM(miscellaneous_loss_amount)
+      FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
+      WHERE branch = '福岡支店' AND year_month = sa.year_month
+    ) AS miscellaneous_loss,
+    (
+      SELECT SUM(head_office_expense)
+      FROM `data-platform-prod-475201.corporate_data_dwh.head_office_expenses`
+      WHERE year_month = sa.year_month
+        AND detail_category IN ('工事部計', '硝子樹脂計', 'GSセンター', '福北センター')
+    ) AS head_office_expense,
     (
       SUM(sa.gross_profit_amount)
-      - COALESCE(MAX(oe.operating_expense_amount), 0)
-      + COALESCE(MAX(noi.rebate_income), 0)
-      + COALESCE(MAX(noi.other_non_operating_income), 0)
-      - COALESCE(MAX(noe.interest_expense), 0)
-      - COALESCE(MAX(ml.miscellaneous_loss_amount), 0)
-      - COALESCE(MAX(hoe.head_office_expense), 0)
+      - COALESCE((
+        SELECT SUM(operating_expense_amount)
+        FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+      + COALESCE((
+        SELECT SUM(rebate_income)
+        FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+      + COALESCE((
+        SELECT SUM(other_non_operating_income)
+        FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+      - COALESCE((
+        SELECT SUM(miscellaneous_loss_amount)
+        FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
+        WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+      - COALESCE((
+        SELECT SUM(head_office_expense)
+        FROM `data-platform-prod-475201.corporate_data_dwh.head_office_expenses`
+        WHERE year_month = sa.year_month
+          AND detail_category IN ('工事部計', '硝子樹脂計', 'GSセンター', '福北センター')
+      ), 0)
     ) AS recurring_profit_actual,
     MAX(rpt.target_amount) AS recurring_profit_target
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
@@ -912,16 +1012,6 @@ tokyo_consolidated AS (
     ON sa.year_month = st_sales.year_month AND st_sales.organization = '福岡支店' AND st_sales.detail_category = '福岡支店計' AND st_sales.metric_type = '売上高' AND st_sales.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
     ON sa.year_month = st_gp.year_month AND st_gp.organization = '福岡支店' AND st_gp.detail_category = '福岡支店計' AND st_gp.metric_type = '売上総利益' AND st_gp.branch = '福岡支店'
-  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
-    ON sa.year_month = oe.year_month AND oe.detail_category = '福岡支店計' AND oe.branch = '福岡支店'
-  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-    ON sa.year_month = noi.year_month AND noi.detail_category = '福岡支店計' AND noi.branch = '福岡支店'
-  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` noe
-    ON sa.year_month = noe.year_month AND noe.detail_category = '福岡支店計'
-  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
-    ON sa.year_month = ml.year_month AND ml.detail_category = '福岡支店計' AND ml.branch = '福岡支店'
-  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` hoe
-    ON sa.year_month = hoe.year_month AND hoe.detail_category = '福岡支店計'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON sa.year_month = oet.year_month AND oet.organization = '福岡支店' AND oet.detail_category = '福岡支店計' AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
