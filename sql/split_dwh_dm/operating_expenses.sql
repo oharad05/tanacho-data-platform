@@ -117,13 +117,14 @@ nagasaki_direct_expenses AS (
 ),
 
 nagasaki_allocation_ratios AS (
-  -- 案分比率の取得
+  -- 案分比率の取得（業務部門案分のみ）
   SELECT
     year_month,
     department,
     ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
+    AND category = '業務部門案分'
 ),
 
 nagasaki_allocated AS (
@@ -136,10 +137,10 @@ nagasaki_allocated AS (
   FROM nagasaki_direct_expenses d
   LEFT JOIN nagasaki_allocation_ratios r_construction
     ON d.year_month = r_construction.year_month
-    AND r_construction.department = '工事営業部'
+    AND r_construction.department = '工事'
   LEFT JOIN nagasaki_allocation_ratios r_glass
     ON d.year_month = r_glass.year_month
-    AND r_glass.department = '硝子建材営業部'
+    AND r_glass.department = '硝子建材'
 ),
 
 nagasaki_unpivoted AS (

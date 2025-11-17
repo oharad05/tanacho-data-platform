@@ -231,8 +231,29 @@ fukuoka_unpivoted AS (
   SELECT year_month, branch, '福北センター', fukuhoku_rebate_total, fukuhoku_other_total FROM fukuoka_allocated
 )
 
-SELECT * FROM tokyo_unpivoted
-UNION ALL
-SELECT * FROM nagasaki_unpivoted
-UNION ALL
-SELECT * FROM fukuoka_unpivoted;
+-- 全支店のデータを統合し、前年データも付与
+SELECT
+  curr.year_month,
+  curr.branch,
+  curr.detail_category,
+  curr.rebate_income,
+  curr.other_non_operating_income,
+  prev.rebate_income AS rebate_income_prev_year,
+  prev.other_non_operating_income AS other_non_operating_income_prev_year
+FROM (
+  SELECT * FROM tokyo_unpivoted
+  UNION ALL
+  SELECT * FROM nagasaki_unpivoted
+  UNION ALL
+  SELECT * FROM fukuoka_unpivoted
+) curr
+LEFT JOIN (
+  SELECT * FROM tokyo_unpivoted
+  UNION ALL
+  SELECT * FROM nagasaki_unpivoted
+  UNION ALL
+  SELECT * FROM fukuoka_unpivoted
+) prev
+  ON DATE_ADD(prev.year_month, INTERVAL 1 YEAR) = curr.year_month
+  AND prev.detail_category = curr.detail_category
+  AND prev.branch = curr.branch;

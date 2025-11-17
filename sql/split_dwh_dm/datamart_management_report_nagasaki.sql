@@ -785,7 +785,55 @@ vertical_format AS (
 
   UNION ALL
 
-  -- 営業外収入（リベート）: 本年実績のみ
+  -- 営業外収入（リベート）: 前年実績
+  SELECT
+    noi.year_month,
+    '営業外収入（リベート）',
+    6,
+    '前年実績',
+    1,
+    '長崎支店',
+    noi.detail_category,
+    CASE noi.detail_category
+      WHEN '長崎支店計' THEN 100
+      WHEN '工事営業部計' THEN 101
+      WHEN 'ガラス工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '硝子建材営業部計' THEN 104
+      WHEN '硝子工事' THEN 105
+      WHEN 'サッシ工事' THEN 106
+      WHEN '硝子販売' THEN 107
+      WHEN 'サッシ販売' THEN 108
+      WHEN '完成品(その他)' THEN 109
+      WHEN 'その他' THEN 110
+      ELSE 199
+    END,
+    noi.rebate_income_prev_year
+  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
+  WHERE noi.branch = '長崎支店'
+    AND noi.detail_category IN ('工事営業部計', '硝子建材営業部計')
+
+  UNION ALL
+
+  -- 営業外収入（リベート）: 前年実績 - 長崎支店計
+  SELECT
+    noi.year_month,
+    '営業外収入（リベート）',
+    6,
+    '前年実績',
+    1,
+    '長崎支店',
+    '長崎支店計',
+    100,
+    SUM(noi.rebate_income_prev_year)
+  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
+  WHERE noi.branch = '長崎支店'
+    AND noi.detail_category IN ('工事営業部計', '硝子建材営業部計')
+  GROUP BY noi.year_month
+
+  UNION ALL
+
+  -- 営業外収入（リベート）: 本年実績
   SELECT
     year_month,
     '営業外収入（リベート）',
@@ -1055,6 +1103,7 @@ SELECT
   ) AS secondary_category_graphname,
   secondary_category_sort_order,
   main_department,
+  2 AS main_department_sort_order,  -- 長崎支店=2
   secondary_department,
   -- secondary_department_newlineに改行コードを挿入
   REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(

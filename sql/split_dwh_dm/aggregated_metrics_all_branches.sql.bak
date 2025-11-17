@@ -90,7 +90,8 @@ tokyo_expense_data AS (
     noi.other_non_operating_income AS other_income,
     noe.interest_expense,
     ml.miscellaneous_loss_amount AS misc_loss,
-    hoe.head_office_expense AS hq_expense
+    hoe.head_office_expense AS hq_expense,
+    hoe.head_office_expense_prev_year AS hq_expense_prev_year
   FROM tokyo_expense oe
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
     ON oe.year_month = noi.year_month AND oe.detail_category = noi.detail_category AND noi.branch = '東京支店'
@@ -165,7 +166,7 @@ tokyo_consolidated AS (
     MAX(oit.target_amount) AS operating_income_target,
     SUM(cm.gross_profit_prev_year) - COALESCE(MAX(ed.operating_expense_prev_year), 0) AS operating_income_prev_year,
     MAX(ed.rebate_income) AS rebate_income, MAX(ed.other_income) AS other_non_operating_income,
-    MAX(ed.interest_expense) AS non_operating_expenses, MAX(ed.misc_loss) AS miscellaneous_loss, MAX(ed.hq_expense) AS head_office_expense,
+    MAX(ed.interest_expense) AS non_operating_expenses, MAX(ed.misc_loss) AS miscellaneous_loss, MAX(ed.hq_expense) AS head_office_expense, MAX(ed.hq_expense_prev_year) AS head_office_expense_prev_year,
     (SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0) + COALESCE(MAX(ed.rebate_income), 0) + COALESCE(MAX(ed.other_income), 0)
      - COALESCE(MAX(ed.interest_expense), 0) - COALESCE(MAX(ed.misc_loss), 0) - COALESCE(MAX(ed.hq_expense), 0)) AS recurring_profit_actual,
     MAX(rpt.target_amount) AS recurring_profit_target
@@ -313,6 +314,7 @@ tokyo_consolidated AS (
     noe.interest_expense AS non_operating_expenses,
     ml.miscellaneous_loss_amount AS miscellaneous_loss,
     hoe.head_office_expense,
+    hoe.head_office_expense_prev_year,
     (
       sa.gross_profit_amount
       - COALESCE(oe.operating_expense_amount, 0)

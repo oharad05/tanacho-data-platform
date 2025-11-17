@@ -83,9 +83,13 @@ bills_rate AS (
 construction_inventory AS (
   SELECT
     tm.year_month,
-    COALESCE(SUM(s.amount), 0) AS inventory_amount
+    COALESCE(SUM(DISTINCT s.amount), 0) AS inventory_amount
   FROM target_months tm
-  LEFT JOIN `data-platform-prod-475201.corporate_data.stocks` s
+  LEFT JOIN (
+    -- 重複データを除外
+    SELECT DISTINCT year_month, branch, department, category, amount
+    FROM `data-platform-prod-475201.corporate_data.stocks`
+  ) s
     ON s.year_month = tm.reference_month
     AND s.branch = '長崎'
     AND s.department = '工事'
@@ -108,7 +112,7 @@ inventory_rate AS (
 building_interest AS (
   SELECT
     year_month,
-    interest_rate AS building_interest_amount
+    interest AS building_interest_amount
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
@@ -130,7 +134,7 @@ construction_allocation_ratio AS (
 depreciation_interest AS (
   SELECT
     year_month,
-    interest_rate AS depreciation_interest_amount
+    interest AS depreciation_interest_amount
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
@@ -190,9 +194,13 @@ glass_bills AS (
 glass_inventory AS (
   SELECT
     tm.year_month,
-    COALESCE(SUM(s.amount), 0) AS inventory_amount
+    COALESCE(SUM(DISTINCT s.amount), 0) AS inventory_amount
   FROM target_months tm
-  LEFT JOIN `data-platform-prod-475201.corporate_data.stocks` s
+  LEFT JOIN (
+    -- 重複データを除外
+    SELECT DISTINCT year_month, branch, department, category, amount
+    FROM `data-platform-prod-475201.corporate_data.stocks`
+  ) s
     ON s.year_month = tm.reference_month
     AND s.branch = '長崎'
     AND s.department = '硝子建材'

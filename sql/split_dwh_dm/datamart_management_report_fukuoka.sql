@@ -1054,6 +1054,7 @@ SELECT
   ) AS secondary_category_graphname,
   secondary_category_sort_order,
   main_department,
+  3 AS main_department_sort_order,  -- 福岡支店=3
   secondary_department,
   -- secondary_department_newlineに改行コードを挿入
   REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(

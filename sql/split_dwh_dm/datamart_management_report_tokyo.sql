@@ -1190,6 +1190,7 @@ SELECT
   ) AS secondary_category_graphname,
   secondary_category_sort_order,
   main_department,
+  1 AS main_department_sort_order,  -- 東京支店=1
   secondary_department,
   -- secondary_department_newlineに改行コードを挿入
   REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
