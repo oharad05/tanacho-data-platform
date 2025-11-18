@@ -42,7 +42,8 @@ SELECT
   secondary_department_newline,
   secondary_department_sort_order,
   value,
-  display_value
+  display_value,
+  main_display_flag
 FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period`
 
 UNION ALL
@@ -60,7 +61,8 @@ SELECT
   secondary_department_newline,
   secondary_department_sort_order,
   value,
-  display_value
+  display_value,
+  main_display_flag
 FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_nagasaki`
 
 UNION ALL
@@ -78,5 +80,6 @@ SELECT
   secondary_department_newline,
   secondary_department_sort_order,
   value,
-  display_value
+  display_value,
+  main_display_flag
 FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_fukuoka`;

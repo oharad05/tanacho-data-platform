@@ -1117,19 +1117,17 @@ SELECT
   AS secondary_department_newline,
   secondary_department_sort_order,
   value,
-  -- display_valueの計算
+  -- display_valueの計算（千円表記のみ）
   CASE
-    -- 利益率（売上総利益率など）は小数で格納されているので100倍してパーセント表示
-    WHEN REGEXP_CONTAINS(main_category, r'(利益率|粗利率|営業利益率)')
-      AND NOT REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)')
-      THEN value * 100
-    -- 目標比と前年比は比率（倍率）で格納されているので100倍してパーセント表示
-    -- （例: value=1.5 → 150%と表示）
-    WHEN REGEXP_CONTAINS(secondary_category, r'(目標比|前年比)\(%\)') THEN value * 100
     -- 千円表記の項目（1/1000倍して四捨五入）
     WHEN main_category != '売上総利益率'
       AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
       THEN ROUND(value / 1000, 0)
     ELSE value
-  END AS display_value
+  END AS display_value,
+  -- main_display_flag: 主要部署にフラグを立てる
+  CASE
+    WHEN secondary_department IN ('長崎支店計', '工事営業部計', '硝子建材営業部計') THEN 1
+    ELSE 0
+  END AS main_display_flag
 FROM vertical_format;
