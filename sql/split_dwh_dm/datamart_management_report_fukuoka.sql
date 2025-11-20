@@ -1078,7 +1078,7 @@ SELECT
   END AS display_value,
   -- main_display_flag: 主要部署にフラグを立てる
   CASE
-    WHEN secondary_department IN ('福岡支店計', '工事部計', '硝子樹脂部計', 'GSセンター', '福北センター') THEN 1
+    WHEN secondary_department IN ('福岡支店計', '工事部計', '硝子樹脂計', 'GSセンター', '福北センター') THEN 1
     ELSE 0
   END AS main_display_flag
 FROM vertical_format;

@@ -806,11 +806,11 @@ tokyo_consolidated AS (
 
   UNION ALL
 
-  -- 組織レベル（硝子樹脂部計）
+  -- 組織レベル（硝子樹脂計）
   SELECT
     sa.year_month,
     sa.organization,
-    '硝子樹脂部計' AS detail_category,
+    '硝子樹脂計' AS detail_category,
     SUM(sa.sales_amount) AS sales_actual,
     MAX(st_sales.target_amount) AS sales_target,
     SUM(sap.sales_amount) AS sales_prev_year,
@@ -845,11 +845,11 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` sap
     ON sa.year_month = sap.year_month AND sa.organization = sap.organization AND sa.detail_category = sap.detail_category AND sap.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
-    ON sa.year_month = st_sales.year_month AND st_sales.organization = '硝子樹脂部' AND st_sales.detail_category = '硝子樹脂部計' AND st_sales.metric_type = '売上高' AND st_sales.branch = '福岡支店'
+    ON sa.year_month = st_sales.year_month AND st_sales.organization = '硝子樹脂部' AND st_sales.detail_category = '硝子樹脂計' AND st_sales.metric_type = '売上高' AND st_sales.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
-    ON sa.year_month = st_gp.year_month AND st_gp.organization = '硝子樹脂部' AND st_gp.detail_category = '硝子樹脂部計' AND st_gp.metric_type = '売上総利益' AND st_gp.branch = '福岡支店'
+    ON sa.year_month = st_gp.year_month AND st_gp.organization = '硝子樹脂部' AND st_gp.detail_category = '硝子樹脂計' AND st_gp.metric_type = '売上総利益' AND st_gp.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
-    ON sa.year_month = oe.year_month AND oe.detail_category = '硝子樹脂部計' AND oe.branch = '福岡支店'
+    ON sa.year_month = oe.year_month AND oe.detail_category = '硝子樹脂計' AND oe.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
     ON sa.year_month = noi.year_month AND noi.detail_category = '硝子樹脂計' AND noi.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` noe
@@ -859,11 +859,11 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` hoe
     ON sa.year_month = hoe.year_month AND hoe.detail_category = '硝子樹脂計'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
-    ON sa.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = '硝子樹脂部計' AND oet.branch = '福岡支店'
+    ON sa.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = '硝子樹脂計' AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
-    ON sa.year_month = oit.year_month AND oit.organization = '硝子樹脂部' AND oit.detail_category = '硝子樹脂部計' AND oit.branch = '福岡支店'
+    ON sa.year_month = oit.year_month AND oit.organization = '硝子樹脂部' AND oit.detail_category = '硝子樹脂計' AND oit.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
-    ON sa.year_month = rpt.year_month AND rpt.organization = '硝子樹脂部' AND rpt.detail_category = '硝子樹脂部計' AND rpt.branch = '福岡支店'
+    ON sa.year_month = rpt.year_month AND rpt.organization = '硝子樹脂部' AND rpt.detail_category = '硝子樹脂計' AND rpt.branch = '福岡支店'
   WHERE sa.branch = '福岡支店'
     AND sa.organization = '硝子樹脂部'
   GROUP BY sa.year_month, sa.organization
@@ -885,10 +885,10 @@ tokyo_consolidated AS (
     NULL AS gross_profit_margin_target,
     NULL AS gross_profit_margin_prev_year,
     oe.operating_expense_amount AS operating_expense_actual,
-    NULL AS operating_expense_target,
+    oet.target_amount AS operating_expense_target,
     NULL AS operating_expense_prev_year,
     (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_actual,
-    NULL AS operating_income_target,
+    oit.target_amount AS operating_income_target,
     (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_prev_year,
     noi.rebate_income,
     noi.other_non_operating_income,
@@ -902,14 +902,69 @@ tokyo_consolidated AS (
       + COALESCE(noi.other_non_operating_income, 0)
       - COALESCE(ml.miscellaneous_loss_amount, 0)
     ) AS recurring_profit_actual,
-    NULL AS recurring_profit_target
+    rpt.target_amount AS recurring_profit_target
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
     ON oe.year_month = noi.year_month AND noi.detail_category = 'GSセンター' AND noi.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
     ON oe.year_month = ml.year_month AND ml.detail_category = 'GSセンター' AND ml.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
+    ON oe.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = 'GSセンター' AND oet.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
+    ON oe.year_month = oit.year_month AND oit.organization = '硝子樹脂部' AND oit.detail_category = 'GSセンター' AND oit.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
+    ON oe.year_month = rpt.year_month AND rpt.organization = '硝子樹脂部' AND rpt.detail_category = 'GSセンター' AND rpt.branch = '福岡支店'
   WHERE oe.branch = '福岡支店'
     AND oe.detail_category = 'GSセンター'
+
+  UNION ALL
+
+  -- 福北センター（売上なし、費用のみ）
+  SELECT
+    oe.year_month,
+    '福北センター' AS organization,
+    '福北センター' AS detail_category,
+    0 AS sales_actual,
+    NULL AS sales_target,
+    0 AS sales_prev_year,
+    0 AS gross_profit_actual,
+    NULL AS gross_profit_target,
+    0 AS gross_profit_prev_year,
+    NULL AS gross_profit_margin_actual,
+    NULL AS gross_profit_margin_target,
+    NULL AS gross_profit_margin_prev_year,
+    oe.operating_expense_amount AS operating_expense_actual,
+    oet.target_amount AS operating_expense_target,
+    NULL AS operating_expense_prev_year,
+    (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_actual,
+    oit.target_amount AS operating_income_target,
+    (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_prev_year,
+    noi.rebate_income,
+    noi.other_non_operating_income,
+    NULL AS non_operating_expenses,
+    ml.miscellaneous_loss_amount AS miscellaneous_loss,
+    NULL AS head_office_expense,
+    (
+      0
+      - COALESCE(oe.operating_expense_amount, 0)
+      + COALESCE(noi.rebate_income, 0)
+      + COALESCE(noi.other_non_operating_income, 0)
+      - COALESCE(ml.miscellaneous_loss_amount, 0)
+    ) AS recurring_profit_actual,
+    rpt.target_amount AS recurring_profit_target
+  FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
+    ON oe.year_month = noi.year_month AND noi.detail_category = '福北センター' AND noi.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
+    ON oe.year_month = ml.year_month AND ml.detail_category = '福北センター' AND ml.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
+    ON oe.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = '福北センター' AND oet.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
+    ON oe.year_month = oit.year_month AND oit.organization = '硝子樹脂部' AND oit.detail_category = '福北センター' AND oit.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
+    ON oe.year_month = rpt.year_month AND rpt.organization = '硝子樹脂部' AND rpt.detail_category = '福北センター' AND rpt.branch = '福岡支店'
+  WHERE oe.branch = '福岡支店'
+    AND oe.detail_category = '福北センター'
 
   UNION ALL
 

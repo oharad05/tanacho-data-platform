@@ -1,4 +1,5 @@
 jp_name,en_name,type,description
+会計年度,sales_accounting_period,DATE,会計年度
 コード,code,STRING,コード
 科目名,subject_name,STRING,科目名
 合計,total,INT64,合計
@@ -25,7 +26,7 @@ jp_name,en_name,type,description
 工事,construction_department,INT64,工事
 硝子建材営業部,glass_building_material_sales_department,INT64,硝子建材営業部
 業務部,operations_department,INT64,業務部
-施工部,construction_department,INT64,施工部
+施工部,construction_division_department,INT64,施工部
 進行売上　決算用,progress_sales_for_settlement,INT64,進行売上　決算用
 完工売上　決算用,completed_sales_for_settlement,INT64,完工売上　決算用
 その他,others,INT64,その他
