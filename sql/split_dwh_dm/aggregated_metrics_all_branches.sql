@@ -145,8 +145,9 @@ tokyo_consolidated AS (
 )
 
 ,tokyo_aggregated AS (
-  -- 詳細レベル
+  -- 詳細レベル（山本（改装）は別途経費データ付きで出力するため除外）
   SELECT * FROM tokyo_consolidated
+  WHERE detail_category != '山本（改装）'
 
   UNION ALL
 
@@ -179,6 +180,35 @@ tokyo_consolidated AS (
     ON cm.year_month = rpt.year_month AND rpt.organization = '工事営業部' AND rpt.detail_category = 'ガラス工事計' AND rpt.branch = '東京支店'
   WHERE cm.organization = '工事営業部' AND cm.detail_category IN ('佐々木（大成・鹿島他）', '小笠原（三井住友他）', '高石（内装・リニューアル）', '浅井（清水他）')
   GROUP BY cm.year_month, cm.organization
+
+  UNION ALL
+
+  -- 山本（改装）: 経費データを付与
+  SELECT
+    cm.year_month, cm.organization, cm.detail_category,
+    cm.sales_actual, cm.sales_target, cm.sales_prev_year,
+    cm.gross_profit_actual, cm.gross_profit_target, cm.gross_profit_prev_year,
+    cm.gross_profit_margin_actual, cm.gross_profit_margin_target, cm.gross_profit_margin_prev_year,
+    ed.operating_expense AS operating_expense_actual,
+    oet.target_amount AS operating_expense_target,
+    ed.operating_expense_prev_year AS operating_expense_prev_year,
+    cm.gross_profit_actual - COALESCE(ed.operating_expense, 0) AS operating_income_actual,
+    oit.target_amount AS operating_income_target,
+    cm.gross_profit_prev_year - COALESCE(ed.operating_expense_prev_year, 0) AS operating_income_prev_year,
+    ed.rebate_income, ed.other_income AS other_non_operating_income,
+    ed.interest_expense AS non_operating_expenses, ed.misc_loss AS miscellaneous_loss, ed.hq_expense AS head_office_expense,
+    (cm.gross_profit_actual - COALESCE(ed.operating_expense, 0) + COALESCE(ed.rebate_income, 0) + COALESCE(ed.other_income, 0)
+     - COALESCE(ed.interest_expense, 0) - COALESCE(ed.misc_loss, 0) - COALESCE(ed.hq_expense, 0)) AS recurring_profit_actual,
+    rpt.target_amount AS recurring_profit_target
+  FROM tokyo_consolidated cm
+  LEFT JOIN tokyo_expense_data ed ON cm.year_month = ed.year_month AND ed.detail_category = '山本（改装）'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
+    ON cm.year_month = oet.year_month AND oet.organization = '工事営業部' AND oet.detail_category = '山本（改装）' AND oet.branch = '東京支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
+    ON cm.year_month = oit.year_month AND oit.organization = '工事営業部' AND oit.detail_category = '山本（改装）' AND oit.branch = '東京支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
+    ON cm.year_month = rpt.year_month AND rpt.organization = '工事営業部' AND rpt.detail_category = '山本（改装）' AND rpt.branch = '東京支店'
+  WHERE cm.detail_category = '山本（改装）'
 
   UNION ALL
 

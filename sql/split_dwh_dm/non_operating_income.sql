@@ -56,17 +56,17 @@ WITH tokyo_income AS (
       END
     ) AS yamamoto_other,
 
-    -- 硝子建材営業部: 硝子建材営業課(20) or 硝子建材営業部(62) (全角・半角対応)
+    -- 硝子建材営業部: 硝子建材営業課(20)のみ
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        WHEN own_department_code = 20 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS glass_sales_rebate,
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        WHEN own_department_code = 20 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END

@@ -21,10 +21,15 @@ DWH: 営業外費用（社内利息）
 
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses` AS
 WITH
--- 山本（改装）の社内利息計算（全期間、2ヶ月前のデータを使用）
+-- 山本（改装）の社内利息計算
+-- 仕様: 9月レポート（実行日10/1）の場合
+--   - billing_balance: sales_month = 8/1（実行日の2ヶ月前）
+--   - internal_interest: year_month = 9/1（作成月の前月）
+--   - 出力: year_month = 9/1（レポート月）
 yamamoto_interest AS (
-  SELECT
-    DATE_ADD(bb.sales_month, INTERVAL 1 MONTH) AS year_month,
+  SELECT DISTINCT
+    ii.year_month AS year_month,  -- レポート月 = internal_interestの月
+    '東京支店' AS branch,
     '山本（改装）' AS detail_category,
     -- 売掛残高 × 利率
     bb.current_month_sales_balance * ii.interest_rate AS interest_expense
@@ -32,7 +37,7 @@ yamamoto_interest AS (
     `data-platform-prod-475201.corporate_data.billing_balance` AS bb
   INNER JOIN
     `data-platform-prod-475201.corporate_data.internal_interest` AS ii
-    ON bb.sales_month = ii.year_month
+    ON DATE_ADD(bb.sales_month, INTERVAL 1 MONTH) = ii.year_month  -- bb月+1ヶ月 = ii月
   WHERE
     bb.branch_code = 13  -- 改修課
     AND ii.branch = '東京支店'
@@ -67,6 +72,7 @@ department_interest AS (
 glass_interest AS (
   SELECT
     di.year_month,
+    '東京支店' AS branch,
     'ガラス工事計' AS detail_category,
     di.glass_construction_interest - COALESCE(yi.interest_expense, 0) AS interest_expense
   FROM
@@ -77,9 +83,9 @@ glass_interest AS (
 )
 
 -- 統合
-SELECT year_month, detail_category, interest_expense FROM yamamoto_interest
+SELECT year_month, branch, detail_category, interest_expense FROM yamamoto_interest
 UNION ALL
-SELECT year_month, detail_category, interest_expense FROM glass_interest
+SELECT year_month, branch, detail_category, interest_expense FROM glass_interest
 UNION ALL
-SELECT year_month, '硝子建材営業部' AS detail_category, glass_sales_interest AS interest_expense
+SELECT year_month, '東京支店' AS branch, '硝子建材営業部' AS detail_category, glass_sales_interest AS interest_expense
 FROM department_interest;

@@ -785,54 +785,6 @@ vertical_format AS (
 
   UNION ALL
 
-  -- 営業外収入（リベート）: 前年実績
-  SELECT
-    noi.year_month,
-    '営業外収入（リベート）',
-    6,
-    '前年実績',
-    1,
-    '長崎支店',
-    noi.detail_category,
-    CASE noi.detail_category
-      WHEN '長崎支店計' THEN 100
-      WHEN '工事営業部計' THEN 101
-      WHEN 'ガラス工事' THEN 102
-      WHEN 'ビルサッシ' THEN 103
-      WHEN '硝子建材営業部計' THEN 104
-      WHEN '硝子工事' THEN 105
-      WHEN 'サッシ工事' THEN 106
-      WHEN '硝子販売' THEN 107
-      WHEN 'サッシ販売' THEN 108
-      WHEN '完成品(その他)' THEN 109
-      WHEN 'その他' THEN 110
-      ELSE 199
-    END,
-    noi.rebate_income_prev_year
-  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-  WHERE noi.branch = '長崎支店'
-    AND noi.detail_category IN ('工事営業部計', '硝子建材営業部計')
-
-  UNION ALL
-
-  -- 営業外収入（リベート）: 前年実績 - 長崎支店計
-  SELECT
-    noi.year_month,
-    '営業外収入（リベート）',
-    6,
-    '前年実績',
-    1,
-    '長崎支店',
-    '長崎支店計',
-    100,
-    SUM(noi.rebate_income_prev_year)
-  FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-  WHERE noi.branch = '長崎支店'
-    AND noi.detail_category IN ('工事営業部計', '硝子建材営業部計')
-  GROUP BY noi.year_month
-
-  UNION ALL
-
   -- 営業外収入（リベート）: 本年実績
   SELECT
     year_month,
@@ -1083,51 +1035,73 @@ SELECT
   date,
   main_category,
   main_category_sort_order,
-  -- secondary_categoryに(千円)または(%)を付加
+  secondary_category,
+  secondary_category_graphname,
+  secondary_category_sort_order,
+  main_department,
+  main_department_sort_order,
+  secondary_department,
+  secondary_department_newline,
+  secondary_department_sort_order,
+  value,
+  -- display_valueの計算（main_display_flag=0かつ売上高/売上総利益/売上総利益率以外はNULL）
   CASE
-    -- 金額項目に(千円)を付加
-    WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
-      THEN CONCAT(secondary_category, '(千円)')
-    ELSE secondary_category
-  END AS secondary_category,
-  -- secondary_category_graphnameから(千円)と(%)を除外
-  REGEXP_REPLACE(
+    WHEN main_display_flag = 0 AND main_category NOT IN ('売上高', '売上総利益', '売上総利益率')
+      THEN NULL
+    ELSE display_value_raw
+  END AS display_value,
+  main_display_flag
+FROM (
+  SELECT
+    date,
+    main_category,
+    main_category_sort_order,
+    -- secondary_categoryに(千円)または(%)を付加
     CASE
       -- 金額項目に(千円)を付加
       WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
         THEN CONCAT(secondary_category, '(千円)')
       ELSE secondary_category
-    END,
-    r'\(千円\)|\(%\)',
-    ''
-  ) AS secondary_category_graphname,
-  secondary_category_sort_order,
-  main_department,
-  2 AS main_department_sort_order,  -- 長崎支店=2
-  secondary_department,
-  -- secondary_department_newlineに改行コードを挿入
-  REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+    END AS secondary_category,
+    -- secondary_category_graphnameから(千円)と(%)を除外
+    REGEXP_REPLACE(
+      CASE
+        -- 金額項目に(千円)を付加
+        WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+          THEN CONCAT(secondary_category, '(千円)')
+        ELSE secondary_category
+      END,
+      r'\(千円\)|\(%\)',
+      ''
+    ) AS secondary_category_graphname,
+    secondary_category_sort_order,
+    main_department,
+    2 AS main_department_sort_order,  -- 長崎支店=2
     secondary_department,
-    '佐々木（大成・鹿島他）', '佐々木\n（大成・鹿島他）'),
-    '浅井（清水他）', '浅井\n（清水他）'),
-    '小笠原（三井住友他）', '小笠原\n（三井住友他）'),
-    '高石（内装・リニューアル）', '高石\n（内装・リニューアル）'),
-    '岡本（清水他）', '岡本\n（清水他）'),
-    '山本（改装）', '山本\n（改装）')
-  AS secondary_department_newline,
-  secondary_department_sort_order,
-  value,
-  -- display_valueの計算（千円表記のみ）
-  CASE
-    -- 千円表記の項目（1/1000倍して四捨五入）
-    WHEN main_category != '売上総利益率'
-      AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
-      THEN ROUND(value / 1000, 0)
-    ELSE value
-  END AS display_value,
-  -- main_display_flag: 主要部署にフラグを立てる
-  CASE
-    WHEN secondary_department IN ('長崎支店計', '工事営業部計', '硝子建材営業部計') THEN 1
-    ELSE 0
-  END AS main_display_flag
-FROM vertical_format;
+    -- secondary_department_newlineに改行コードを挿入
+    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+      secondary_department,
+      '佐々木（大成・鹿島他）', '佐々木\n（大成・鹿島他）'),
+      '浅井（清水他）', '浅井\n（清水他）'),
+      '小笠原（三井住友他）', '小笠原\n（三井住友他）'),
+      '高石（内装・リニューアル）', '高石\n（内装・リニューアル）'),
+      '岡本（清水他）', '岡本\n（清水他）'),
+      '山本（改装）', '山本\n（改装）')
+    AS secondary_department_newline,
+    secondary_department_sort_order,
+    value,
+    -- display_valueの計算（千円表記のみ）
+    CASE
+      -- 千円表記の項目（1/1000倍して四捨五入）
+      WHEN main_category != '売上総利益率'
+        AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+        THEN ROUND(value / 1000, 0)
+      ELSE value
+    END AS display_value_raw,
+    -- main_display_flag: 主要部署にフラグを立てる
+    CASE
+      WHEN secondary_department IN ('長崎支店計', '工事営業部計', '硝子建材営業部計') THEN 1
+      ELSE 0
+    END AS main_display_flag
+  FROM vertical_format
+);

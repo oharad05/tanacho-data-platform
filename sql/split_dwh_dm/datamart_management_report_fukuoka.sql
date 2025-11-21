@@ -1034,51 +1034,73 @@ SELECT
   date,
   main_category,
   main_category_sort_order,
-  -- secondary_categoryに(千円)または(%)を付加
+  secondary_category,
+  secondary_category_graphname,
+  secondary_category_sort_order,
+  main_department,
+  main_department_sort_order,
+  secondary_department,
+  secondary_department_newline,
+  secondary_department_sort_order,
+  value,
+  -- display_valueの計算（main_display_flag=0かつ売上高/売上総利益/売上総利益率以外はNULL）
   CASE
-    -- 金額項目に(千円)を付加
-    WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
-      THEN CONCAT(secondary_category, '(千円)')
-    ELSE secondary_category
-  END AS secondary_category,
-  -- secondary_category_graphnameから(千円)と(%)を除外
-  REGEXP_REPLACE(
+    WHEN main_display_flag = 0 AND main_category NOT IN ('売上高', '売上総利益', '売上総利益率')
+      THEN NULL
+    ELSE display_value_raw
+  END AS display_value,
+  main_display_flag
+FROM (
+  SELECT
+    date,
+    main_category,
+    main_category_sort_order,
+    -- secondary_categoryに(千円)または(%)を付加
     CASE
       -- 金額項目に(千円)を付加
       WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
         THEN CONCAT(secondary_category, '(千円)')
       ELSE secondary_category
-    END,
-    r'\(千円\)|\(%\)',
-    ''
-  ) AS secondary_category_graphname,
-  secondary_category_sort_order,
-  main_department,
-  3 AS main_department_sort_order,  -- 福岡支店=3
-  secondary_department,
-  -- secondary_department_newlineに改行コードを挿入
-  REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+    END AS secondary_category,
+    -- secondary_category_graphnameから(千円)と(%)を除外
+    REGEXP_REPLACE(
+      CASE
+        -- 金額項目に(千円)を付加
+        WHEN NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+          THEN CONCAT(secondary_category, '(千円)')
+        ELSE secondary_category
+      END,
+      r'\(千円\)|\(%\)',
+      ''
+    ) AS secondary_category_graphname,
+    secondary_category_sort_order,
+    main_department,
+    3 AS main_department_sort_order,  -- 福岡支店=3
     secondary_department,
-    '佐々木（大成・鹿島他）', '佐々木\n（大成・鹿島他）'),
-    '浅井（清水他）', '浅井\n（清水他）'),
-    '小笠原（三井住友他）', '小笠原\n（三井住友他）'),
-    '高石（内装・リニューアル）', '高石\n（内装・リニューアル）'),
-    '岡本（清水他）', '岡本\n（清水他）'),
-    '山本（改装）', '山本\n（改装）')
-  AS secondary_department_newline,
-  secondary_department_sort_order,
-  value,
-  -- display_valueの計算（千円表記のみ）
-  CASE
-    -- 千円表記の項目（1/1000倍して四捨五入）
-    WHEN main_category != '売上総利益率'
-      AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
-      THEN ROUND(value / 1000, 0)
-    ELSE value
-  END AS display_value,
-  -- main_display_flag: 主要部署にフラグを立てる
-  CASE
-    WHEN secondary_department IN ('福岡支店計', '工事部計', '硝子樹脂計', 'GSセンター', '福北センター') THEN 1
-    ELSE 0
-  END AS main_display_flag
-FROM vertical_format;
+    -- secondary_department_newlineに改行コードを挿入
+    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+      secondary_department,
+      '佐々木（大成・鹿島他）', '佐々木\n（大成・鹿島他）'),
+      '浅井（清水他）', '浅井\n（清水他）'),
+      '小笠原（三井住友他）', '小笠原\n（三井住友他）'),
+      '高石（内装・リニューアル）', '高石\n（内装・リニューアル）'),
+      '岡本（清水他）', '岡本\n（清水他）'),
+      '山本（改装）', '山本\n（改装）')
+    AS secondary_department_newline,
+    secondary_department_sort_order,
+    value,
+    -- display_valueの計算（千円表記のみ）
+    CASE
+      -- 千円表記の項目（1/1000倍して四捨五入）
+      WHEN main_category != '売上総利益率'
+        AND NOT REGEXP_CONTAINS(secondary_category, r'\(%\)')
+        THEN ROUND(value / 1000, 0)
+      ELSE value
+    END AS display_value_raw,
+    -- main_display_flag: 主要部署にフラグを立てる
+    CASE
+      WHEN secondary_department IN ('福岡支店計', '工事部計', '硝子樹脂計', 'GSセンター', '福北センター') THEN 1
+      ELSE 0
+    END AS main_display_flag
+  FROM vertical_format
+);

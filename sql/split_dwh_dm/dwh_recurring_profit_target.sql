@@ -26,6 +26,7 @@ WITH tokyo_profit_plan AS (
     company_asai,
     company_ogasawara,
     company_takaishi,
+    glass_construction_total,
     company_yamamoto,
     glass_building_material_sales_department,
     glass_construction,
@@ -38,7 +39,7 @@ WITH tokyo_profit_plan AS (
 ),
 
 tokyo_target AS (
-  SELECT period AS year_month, '東京支店' AS branch, '東京支店' AS organization, '東京支店計' AS detail_category, tokyo_branch_total AS target_amount
+  SELECT DISTINCT period AS year_month, '東京支店' AS branch, '東京支店' AS organization, '東京支店計' AS detail_category, tokyo_branch_total AS target_amount
   FROM tokyo_profit_plan WHERE item = '経常利益'
   UNION ALL
   SELECT period, '東京支店', '工事営業部', '工事営業部計', construction_sales_department_total FROM tokyo_profit_plan WHERE item = '経常利益'
@@ -50,6 +51,8 @@ tokyo_target AS (
   SELECT period, '東京支店', '工事営業部', '小笠原（三井住友他）', company_ogasawara FROM tokyo_profit_plan WHERE item = '経常利益'
   UNION ALL
   SELECT period, '東京支店', '工事営業部', '高石（内装・リニューアル）', company_takaishi FROM tokyo_profit_plan WHERE item = '経常利益'
+  UNION ALL
+  SELECT period, '東京支店', '工事営業部', 'ガラス工事計', glass_construction_total FROM tokyo_profit_plan WHERE item = '経常利益'
   UNION ALL
   SELECT period, '東京支店', '工事営業部', '山本（改装）', company_yamamoto FROM tokyo_profit_plan WHERE item = '経常利益'
   UNION ALL
@@ -152,8 +155,8 @@ fukuoka_target AS (
   SELECT period, '福岡支店', '硝子樹脂部', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
 )
 
-SELECT * FROM tokyo_target
+SELECT DISTINCT * FROM tokyo_target
 UNION ALL
-SELECT * FROM nagasaki_target
+SELECT DISTINCT * FROM nagasaki_target
 UNION ALL
-SELECT * FROM fukuoka_target;
+SELECT DISTINCT * FROM fukuoka_target;
