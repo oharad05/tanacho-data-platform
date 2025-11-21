@@ -98,10 +98,10 @@ fukuoka_expenses AS (
       END
     ) AS construction_expense,
 
-    -- 硝子樹脂部
+    -- 硝子樹脂部（硝子建材 + 樹脂建材）
     SUM(
       CASE
-        WHEN code = '8366' THEN glass_building_material_sales_department
+        WHEN code = '8366' THEN glass_building_material + resin
         ELSE 0
       END
     ) AS glass_resin_expense,

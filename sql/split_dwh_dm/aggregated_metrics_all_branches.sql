@@ -1045,9 +1045,9 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` sap
     ON sa.year_month = sap.year_month AND sa.organization = sap.organization AND sa.detail_category = sap.detail_category AND sap.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
-    ON sa.year_month = st_sales.year_month AND st_sales.organization = '福岡支店' AND st_sales.detail_category = '福岡支店計' AND st_sales.metric_type = '売上高' AND st_sales.branch = '福岡支店'
+    ON sa.year_month = st_sales.year_month AND st_sales.organization = '福岡支店' AND st_sales.detail_category = '福岡支店計' AND st_sales.metric_type = 'sales' AND st_sales.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
-    ON sa.year_month = st_gp.year_month AND st_gp.organization = '福岡支店' AND st_gp.detail_category = '福岡支店計' AND st_gp.metric_type = '売上総利益' AND st_gp.branch = '福岡支店'
+    ON sa.year_month = st_gp.year_month AND st_gp.organization = '福岡支店' AND st_gp.detail_category = '福岡支店計' AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON sa.year_month = oet.year_month AND oet.organization = '福岡支店' AND oet.detail_category = '福岡支店計' AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit

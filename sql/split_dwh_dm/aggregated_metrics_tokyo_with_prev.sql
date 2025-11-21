@@ -25,7 +25,7 @@ WITH base_metrics AS (
     operating_expense_target,
     operating_income_actual,
     operating_income_target
-  FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period`
+  FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_tokyo`
   WHERE main_department = '東京支店'
     AND main_category = '売上高'  -- aggregated_metricsの代わりに既存テーブルから取得
 )

@@ -18,7 +18,7 @@ DataMart: 経営資料（全期間）ダッシュボード用SQL（縦持ち形�
   - value: 集計値
 
 データソース:
-  - management_documents_all_period（東京支店: 統合DWH参照）
+  - management_documents_all_period_tokyo（東京支店: 統合DWH参照）
   - management_documents_all_period_nagasaki（長崎支店: 統合DWH参照）
   - management_documents_all_period_fukuoka（福岡支店: 統合DWH参照）
 
@@ -44,7 +44,7 @@ SELECT
   value,
   display_value,
   main_display_flag
-FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period`
+FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_tokyo`
 
 UNION ALL
 

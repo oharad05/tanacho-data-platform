@@ -138,15 +138,15 @@ construction_fixed_asset_interest AS (
   GROUP BY year_month
 ),
 
--- ⑨ 案分比率（工事部）
+-- ⑨ 案分比率（工事部）- 月別に取得
 construction_allocation_ratio AS (
   SELECT
+    year_month,
     ratio AS allocation_ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
-  WHERE branch = '福岡支店'
+  WHERE branch = '福岡'
     AND department = '工事'
     AND category = '社内利息案分'
-  LIMIT 1
 ),
 
 -- 工事部計の社内利息計算
@@ -175,7 +175,7 @@ construction_interest AS (
   LEFT JOIN construction_inventory ci ON cr.year_month = ci.year_month
   LEFT JOIN inventory_rate ir ON cr.year_month = ir.year_month
   LEFT JOIN construction_fixed_asset_interest cfai ON cr.year_month = cfai.year_month
-  CROSS JOIN construction_allocation_ratio car
+  LEFT JOIN construction_allocation_ratio car ON cr.year_month = car.year_month
 ),
 
 -- ============================================================
@@ -231,14 +231,16 @@ glass_inventory AS (
 
 -- ⑧ 土地・建物・償却資産利息（硝子樹脂部も同じ値を使用）
 
--- ⑨ 案分比率（硝子建材+樹脂建材の合計）
+-- ⑨ 案分比率（硝子建材+樹脂建材の合計）- 月別に取得
 glass_allocation_ratio AS (
   SELECT
+    year_month,
     SUM(ratio) AS allocation_ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
-  WHERE branch = '福岡支店'
+  WHERE branch = '福岡'
     AND department IN ('硝子建材', '樹脂建材')
     AND category = '社内利息案分'
+  GROUP BY year_month
 ),
 
 -- 硝子樹脂計の社内利息計算
@@ -267,7 +269,7 @@ glass_interest AS (
   LEFT JOIN glass_inventory gi ON gr.year_month = gi.year_month
   LEFT JOIN inventory_rate ir ON gr.year_month = ir.year_month
   LEFT JOIN construction_fixed_asset_interest cfai ON gr.year_month = cfai.year_month
-  CROSS JOIN glass_allocation_ratio gar
+  LEFT JOIN glass_allocation_ratio gar ON gr.year_month = gar.year_month
 ),
 
 -- ============================================================

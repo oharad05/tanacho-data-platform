@@ -144,91 +144,87 @@ nagasaki_unpivoted AS (
   SELECT year_month, branch, '硝子建材営業部計', glass_sales_rebate_total, glass_sales_other_total FROM nagasaki_allocated
 ),
 
-fukuoka_department_data AS (
-  -- 福岡支店: 部門集計表から取得 (コード8730=雑収入リベート, 8870=雑損失その他)
+fukuoka_income AS (
+  -- 福岡支店: 元帳_雑収入から取得（東京支店と同様のロジック）
+  -- 部門コード: 31=工事部, 33=硝子建材, 34=樹脂, 38=GSセンター, 40-46=福北センター
   SELECT
-    sales_accounting_period AS year_month,
-    code,
-    COALESCE(construction_department, 0) AS construction_dept_amount,
-    COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
-    COALESCE(operations_department, 0) AS operations_dept_amount,
-    COALESCE(gs, 0) AS gs_amount,
-    COALESCE(
-      fukuhoku_daiwa_glass + fukuhoku_daiwa_welding + fukuhoku_daiwa_branch +
-      fukuhoku_nagawa + fukuhoku_moroguchi + fukuhoku_techno + fukuhoku_common, 0
-    ) AS fukuhoku_amount
-  FROM `data-platform-prod-475201.corporate_data.department_summary`
-  WHERE code IN ('8730', '8870')
-),
-
-fukuoka_direct_income AS (
-  SELECT
-    year_month,
-    MAX(CASE WHEN code = '8730' THEN construction_dept_amount ELSE 0 END) AS construction_rebate_direct,
-    MAX(CASE WHEN code = '8870' THEN construction_dept_amount ELSE 0 END) AS construction_other_direct,
-    MAX(CASE WHEN code = '8730' THEN glass_dept_amount ELSE 0 END) AS glass_rebate_direct,
-    MAX(CASE WHEN code = '8870' THEN glass_dept_amount ELSE 0 END) AS glass_other_direct,
-    MAX(CASE WHEN code = '8730' THEN operations_dept_amount ELSE 0 END) AS operations_rebate,
-    MAX(CASE WHEN code = '8870' THEN operations_dept_amount ELSE 0 END) AS operations_other,
-    MAX(CASE WHEN code = '8730' THEN gs_amount ELSE 0 END) AS gs_rebate,
-    MAX(CASE WHEN code = '8870' THEN gs_amount ELSE 0 END) AS gs_other,
-    MAX(CASE WHEN code = '8730' THEN fukuhoku_amount ELSE 0 END) AS fukuhoku_rebate,
-    MAX(CASE WHEN code = '8870' THEN fukuhoku_amount ELSE 0 END) AS fukuhoku_other
-  FROM fukuoka_department_data
-  GROUP BY year_month
-),
-
-fukuoka_allocation_ratios AS (
-  -- 案分比率の取得(業務部門案分のみ)、硝子樹脂は合算
-  SELECT
-    year_month,
-    CASE
-      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
-      ELSE department
-    END AS department,
-    SUM(ratio) AS ratio
-  FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
-  WHERE branch = '福岡'
-    AND category = '業務部門案分'
-  GROUP BY year_month,
-    CASE
-      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
-      ELSE department
-    END
-),
-
-fukuoka_allocated AS (
-  SELECT
-    d.year_month,
+    DATE(accounting_month) AS year_month,
     '福岡支店' AS branch,
-    d.construction_rebate_direct + (d.operations_rebate * COALESCE(r_construction.ratio, 0)) AS construction_rebate_total,
-    d.construction_other_direct + (d.operations_other * COALESCE(r_construction.ratio, 0)) AS construction_other_total,
-    d.glass_rebate_direct + (d.operations_rebate * COALESCE(r_glass.ratio, 0)) AS glass_rebate_total,
-    d.glass_other_direct + (d.operations_other * COALESCE(r_glass.ratio, 0)) AS glass_other_total,
-    d.gs_rebate + (d.operations_rebate * COALESCE(r_gs.ratio, 0)) AS gs_rebate_total,
-    d.gs_other + (d.operations_other * COALESCE(r_gs.ratio, 0)) AS gs_other_total,
-    d.fukuhoku_rebate AS fukuhoku_rebate_total,
-    d.fukuhoku_other AS fukuhoku_other_total
-  FROM fukuoka_direct_income d
-  LEFT JOIN fukuoka_allocation_ratios r_construction
-    ON d.year_month = r_construction.year_month
-    AND r_construction.department = '工事'
-  LEFT JOIN fukuoka_allocation_ratios r_glass
-    ON d.year_month = r_glass.year_month
-    AND r_glass.department = '硝子樹脂'
-  LEFT JOIN fukuoka_allocation_ratios r_gs
-    ON d.year_month = r_gs.year_month
-    AND r_gs.department = 'GSセンター'
+    -- 工事部計: 部門コード31
+    SUM(
+      CASE
+        WHEN own_department_code = 31 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS construction_rebate,
+    SUM(
+      CASE
+        WHEN own_department_code = 31 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS construction_other,
+
+    -- 硝子樹脂計: 部門コード33 + 34
+    SUM(
+      CASE
+        WHEN own_department_code IN (33, 34) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS glass_resin_rebate,
+    SUM(
+      CASE
+        WHEN own_department_code IN (33, 34) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS glass_resin_other,
+
+    -- GSセンター: 部門コード38
+    SUM(
+      CASE
+        WHEN own_department_code = 38 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS gs_rebate,
+    SUM(
+      CASE
+        WHEN own_department_code = 38 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS gs_other,
+
+    -- 福北センター: 部門コード40-46
+    SUM(
+      CASE
+        WHEN own_department_code BETWEEN 40 AND 46 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS fukuhoku_rebate,
+    SUM(
+      CASE
+        WHEN own_department_code BETWEEN 40 AND 46 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        THEN amount
+        ELSE 0
+      END
+    ) AS fukuhoku_other
+  FROM `data-platform-prod-475201.corporate_data.ledger_income`
+  GROUP BY year_month, branch
 ),
 
 fukuoka_unpivoted AS (
-  SELECT year_month, branch, '工事部計' AS detail_category, construction_rebate_total AS rebate_income, construction_other_total AS other_non_operating_income FROM fukuoka_allocated
+  SELECT year_month, branch, '工事部計' AS detail_category, construction_rebate AS rebate_income, construction_other AS other_non_operating_income FROM fukuoka_income
   UNION ALL
-  SELECT year_month, branch, '硝子樹脂計', glass_rebate_total, glass_other_total FROM fukuoka_allocated
+  SELECT year_month, branch, '硝子樹脂計', glass_resin_rebate, glass_resin_other FROM fukuoka_income
   UNION ALL
-  SELECT year_month, branch, 'GSセンター', gs_rebate_total, gs_other_total FROM fukuoka_allocated
+  SELECT year_month, branch, 'GSセンター', gs_rebate, gs_other FROM fukuoka_income
   UNION ALL
-  SELECT year_month, branch, '福北センター', fukuhoku_rebate_total, fukuhoku_other_total FROM fukuoka_allocated
+  SELECT year_month, branch, '福北センター', fukuhoku_rebate, fukuhoku_other FROM fukuoka_income
 )
 
 -- 全支店のデータを統合し、前年データも付与

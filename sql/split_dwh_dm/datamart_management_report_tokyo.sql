@@ -23,7 +23,7 @@ DataMart: 経営資料（当月）ダッシュボード用SQL（縦持ち形式�
 ============================================================
 */
 
-CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period` AS
+CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_tokyo` AS
 WITH
 -- ============================================================
 -- 中間テーブルから集計済みメトリクスを読み込み
