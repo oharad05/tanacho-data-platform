@@ -497,10 +497,18 @@ def delete_partition_data(
     year = yyyymm[:4]
     month = yyyymm[4:6]
 
-    if table_name in ["ledger_income", "ledger_loss"]:
+    # slip_date や final_billing_sales_date など、月の1日以外の日付が入るフィールドは
+    # FORMAT_DATE で年月を比較する
+    tables_with_non_first_day_dates = [
+        "ledger_income",
+        "ledger_loss",
+        "construction_progress_days_final_date"
+    ]
+
+    if table_name in tables_with_non_first_day_dates:
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE DATE({partition_field}) = '{year}-{month}-01'
+        WHERE FORMAT_DATE('%Y%m', {partition_field}) = '{yyyymm}'
         """
     else:
         delete_query = f"""

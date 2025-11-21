@@ -90,8 +90,19 @@ def _load_mapping_csv():
     out.columns = ["jp_name", "en_name"]
     return out
 
-def _slug_from_mapping(df_map: pd.DataFrame, original_name: str):
-    """ファイル名からスラグを取得"""
+def _slug_from_mapping(df_map: pd.DataFrame, original_name: str, yyyymm: str = None):
+    """ファイル名からスラグを取得
+
+    Args:
+        df_map: マッピングDataFrame
+        original_name: 元のファイル名
+        yyyymm: 対象年月（部門集計表のパターンマッチング用）
+    """
+    # 部門集計表の特殊処理: 「6_部門集計表_{yyyymm}.xlsx」形式を認識
+    if re.match(r"6_部門集計表_\d{6}\.xlsx", original_name):
+        print(f"  📋 部門集計表を検出: {original_name} → department_summary")
+        return "department_summary"
+
     row = df_map.loc[df_map["jp_name"] == original_name]
     if row.empty:
         base = os.path.splitext(original_name)[0]

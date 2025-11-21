@@ -1,0 +1,44 @@
+# データ取り込み時に存在しなかったファイル一覧
+# 対象期間: 202409〜202509
+# 作成日: 2025-11-21
+
+## Driveに存在しないファイル（全期間共通）
+
+### profit_plan_term_nagasaki (長崎支店損益計画)
+- 202409/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202410/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202411/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202412/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202501/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202502/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202503/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202504/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202505/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202506/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202507/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202508/profit_plan_term_nagasaki.xlsx: ファイルなし
+- 202509/profit_plan_term_nagasaki.xlsx: ファイルなし
+
+### profit_plan_term_fukuoka (福岡支店損益計画)
+- 202409/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202410/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202411/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202412/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202501/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202502/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202503/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202504/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202505/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202506/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202507/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202508/profit_plan_term_fukuoka.xlsx: ファイルなし
+- 202509/profit_plan_term_fukuoka.xlsx: ファイルなし
+
+## 202509のみに存在するファイル（202409〜202508には存在しない）
+- customer_sales_target_and_achievements.xlsx (得意先売上目標/実績)
+- construction_progress_days_amount.xlsx (工事経過日数一覧表-物件金額)
+- construction_progress_days_final_date.xlsx (工事経過日数一覧表-物件実績最終日)
+
+## 備考
+- profit_plan_term_nagasaki/fukuokaはDWH/DMのSQLで使用されていますが、Driveにファイルが存在しないため長崎/福岡支店のデータは処理されません
+- ms_department_categoryはmapping_filesから削除しました（不要と判断）

@@ -59,10 +59,18 @@ TABLE_CONFIG = {
         "partition_field": "year_month",
         "clustering_fields": ["branch"]
     },
-    "ms_department_category": {
-        "partition_field": None,  # マスターテーブルなのでパーティション不要
-        "clustering_fields": ["department_category_code"]
-    }
+    "customer_sales_target_and_achievements": {
+        "partition_field": "sales_accounting_period",
+        "clustering_fields": ["branch_code"]
+    },
+    "construction_progress_days_amount": {
+        "partition_field": "slip_date",
+        "clustering_fields": ["branch_code"]
+    },
+    "construction_progress_days_final_date": {
+        "partition_field": "slip_date",
+        "clustering_fields": ["branch_code"]
+    },
 }
 
 def create_bigquery_client():

@@ -419,7 +419,9 @@ def process_gcs_files(yyyymm: str):
         "ledger_loss",
         "stocks",
         "ms_allocation_ratio",
-        "ms_department_category"
+        "customer_sales_target_and_achievements",
+        "construction_progress_days_amount",
+        "construction_progress_days_final_date",
     ]
 
     success_count = 0
@@ -427,20 +429,13 @@ def process_gcs_files(yyyymm: str):
 
     for table_name in tables:
         try:
-            # ファイル名マッピングから日本語ファイル名とシート名を取得
-            if table_name not in file_name_mapping:
-                print(f"⚠️  ファイル名マッピングが見つかりません: {table_name}")
-                error_count += 1
-                continue
+            # ファイル名マッピングからシート名を取得
+            sheet_name = None
+            if table_name in file_name_mapping:
+                _, sheet_name = file_name_mapping[table_name]
 
-            jp_filename, sheet_name = file_name_mapping[table_name]
-
-            # department_summaryの場合、ファイル名に年月を置換
-            if table_name == "department_summary":
-                jp_filename = jp_filename.replace("202509", yyyymm)
-
-            # GCSパス（日本語ファイル名を使用）
-            raw_path = f"raw/{yyyymm}/{jp_filename}"
+            # GCSパス（英語ファイル名を使用 - sync_drive_to_gcs.pyが英語スラグで保存するため）
+            raw_path = f"raw/{yyyymm}/{table_name}.xlsx"
             proceed_path = f"proceed/{yyyymm}/{table_name}.csv"
 
             # rawファイルをダウンロード

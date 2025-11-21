@@ -28,5 +28,4 @@ jp_name,en_name,type,description
 業務部,operations_department,INT64,業務部
 施工部,construction_division_department,INT64,施工部
 進行売上　決算用,progress_sales_for_settlement,INT64,進行売上　決算用
-完工売上　決算用,completed_sales_for_settlement,INT64,完工売上　決算用
 その他,others,INT64,その他

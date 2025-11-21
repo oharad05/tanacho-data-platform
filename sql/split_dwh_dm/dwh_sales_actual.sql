@@ -23,7 +23,7 @@ WITH tokyo_sales AS (
     '東京支店' AS branch,
     -- 組織識別
     CASE
-      WHEN branch_code = 11 THEN '工事営業部'
+      WHEN branch_code IN (11, 13) THEN '工事営業部'  -- 011=工事営業部, 013=改修課（山本）
       WHEN branch_code = 25 THEN '硝子建材営業部'
       ELSE 'その他'
     END AS organization,
