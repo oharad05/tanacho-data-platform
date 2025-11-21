@@ -88,7 +88,7 @@ nagasaki_department_data AS (
   SELECT
     sales_accounting_period AS year_month,
     code,
-    COALESCE(construction_sales_department, 0) AS construction_dept_amount,
+    COALESCE(construction_department, 0) AS construction_dept_amount,
     COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
     COALESCE(operations_department, 0) AS operations_dept_amount
   FROM `data-platform-prod-475201.corporate_data.department_summary`
