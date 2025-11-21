@@ -90,10 +90,10 @@ fukuoka_expenses AS (
   SELECT
     sales_accounting_period AS year_month,
     '福岡支店' AS branch,
-    -- 工事部
+    -- 工事部: 「工事営業部」カラムを使用（営業経費と同様）
     SUM(
       CASE
-        WHEN code = '8366' THEN construction_department
+        WHEN code = '8366' THEN construction_sales_department
         ELSE 0
       END
     ) AS construction_expense,

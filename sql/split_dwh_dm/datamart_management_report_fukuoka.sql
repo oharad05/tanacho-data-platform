@@ -99,7 +99,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -125,7 +125,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -151,7 +151,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -177,7 +177,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -206,7 +206,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -237,7 +237,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -263,7 +263,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -289,7 +289,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -315,7 +315,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -344,7 +344,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -375,7 +375,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -401,7 +401,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -427,7 +427,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -453,7 +453,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -482,7 +482,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -513,7 +513,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -540,7 +540,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -568,7 +568,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -594,7 +594,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -625,7 +625,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -656,7 +656,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -684,7 +684,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -711,7 +711,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -737,7 +737,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -768,7 +768,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -799,7 +799,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -827,7 +827,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -855,7 +855,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -883,7 +883,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -911,7 +911,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -939,7 +939,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -965,7 +965,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -991,7 +991,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108
@@ -1018,7 +1018,7 @@ vertical_format AS (
       WHEN '硝子工事' THEN 102
       WHEN 'ビルサッシ' THEN 103
       WHEN '内装工事' THEN 104
-      WHEN '硝子樹脂部計' THEN 105
+      WHEN '硝子樹脂計' THEN 105
       WHEN '硝子' THEN 106
       WHEN '建材' THEN 107
       WHEN '樹脂' THEN 108

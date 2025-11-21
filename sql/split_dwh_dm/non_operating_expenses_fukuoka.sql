@@ -115,11 +115,11 @@ construction_inventory AS (
   GROUP BY year_month
 ),
 
--- ⑦ 在庫利息（棚卸在庫・未成工事支出金）
-inventory_rate AS (
+-- ⑦ 在庫利息（棚卸在庫・未成工事支出金）- interest列（計算済み利息額）を使用
+inventory_interest AS (
   SELECT
     year_month,
-    interest_rate
+    interest AS inventory_interest_amount
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '福岡支店'
     AND category = '社内利息（A）'
@@ -159,11 +159,10 @@ construction_interest AS (
       COALESCE(cr.receivables_amount, 0) * COALESCE(crr.interest_rate, 0)
       -- ③×④: 未落手形 × 未落手形利率
       + COALESCE(cb.bills_amount, 0) * COALESCE(br.interest_rate, 0)
-      -- (⑤×⑥/⑤)×⑦: 在庫按分 × 在庫利息
-      + COALESCE(ti.total_inventory_amount, 0)
-        * COALESCE(ci.construction_inventory_amount, 0)
+      -- (⑥/⑤)×⑦: (工事部在庫/全体在庫) × 在庫利息額
+      + COALESCE(ci.construction_inventory_amount, 0)
         / NULLIF(COALESCE(ti.total_inventory_amount, 0), 0)
-        * COALESCE(ir.interest_rate, 0)
+        * COALESCE(ii.inventory_interest_amount, 0)
       -- ⑧×⑨: 固定資産利息 × 案分比率
       + COALESCE(cfai.fixed_asset_interest, 0) * COALESCE(car.allocation_ratio, 0)
     ) AS interest_expense
@@ -173,7 +172,7 @@ construction_interest AS (
   LEFT JOIN bills_rate br ON cr.year_month = br.year_month
   LEFT JOIN total_inventory ti ON cr.year_month = ti.year_month
   LEFT JOIN construction_inventory ci ON cr.year_month = ci.year_month
-  LEFT JOIN inventory_rate ir ON cr.year_month = ir.year_month
+  LEFT JOIN inventory_interest ii ON cr.year_month = ii.year_month
   LEFT JOIN construction_fixed_asset_interest cfai ON cr.year_month = cfai.year_month
   LEFT JOIN construction_allocation_ratio car ON cr.year_month = car.year_month
 ),
@@ -253,11 +252,10 @@ glass_interest AS (
       COALESCE(gr.receivables_amount, 0) * COALESCE(grr.interest_rate, 0)
       -- ③×④: 未落手形 × 未落手形利率
       + COALESCE(gb.bills_amount, 0) * COALESCE(br.interest_rate, 0)
-      -- (⑤×⑥/⑤)×⑦: 在庫按分 × 在庫利息
-      + COALESCE(ti.total_inventory_amount, 0)
-        * COALESCE(gi.glass_inventory_amount, 0)
+      -- (⑥/⑤)×⑦: (硝子樹脂在庫/全体在庫) × 在庫利息額
+      + COALESCE(gi.glass_inventory_amount, 0)
         / NULLIF(COALESCE(ti.total_inventory_amount, 0), 0)
-        * COALESCE(ir.interest_rate, 0)
+        * COALESCE(ii.inventory_interest_amount, 0)
       -- ⑧×⑨: 固定資産利息 × 案分比率
       + COALESCE(cfai.fixed_asset_interest, 0) * COALESCE(gar.allocation_ratio, 0)
     ) AS interest_expense
@@ -267,7 +265,7 @@ glass_interest AS (
   LEFT JOIN bills_rate br ON gr.year_month = br.year_month
   LEFT JOIN total_inventory ti ON gr.year_month = ti.year_month
   LEFT JOIN glass_inventory gi ON gr.year_month = gi.year_month
-  LEFT JOIN inventory_rate ir ON gr.year_month = ir.year_month
+  LEFT JOIN inventory_interest ii ON gr.year_month = ii.year_month
   LEFT JOIN construction_fixed_asset_interest cfai ON gr.year_month = cfai.year_month
   LEFT JOIN glass_allocation_ratio gar ON gr.year_month = gar.year_month
 ),
@@ -276,7 +274,7 @@ glass_interest AS (
 -- 【福北センター】の計算
 -- ============================================================
 
--- ① 固定値（売掛金・福北センター）
+-- ① 固定値（売掛金・福北センター）※breakdownは半角カタカナ「福北ｾﾝﾀｰ」
 fukuhoku_interest AS (
   SELECT
     year_month,
@@ -285,7 +283,7 @@ fukuhoku_interest AS (
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '福岡支店'
     AND category = '社内利息（A）'
-    AND breakdown = '売掛金・福北センター'
+    AND breakdown = '売掛金・福北ｾﾝﾀｰ'
 )
 
 -- ============================================================
@@ -295,4 +293,18 @@ SELECT * FROM construction_interest
 UNION ALL
 SELECT * FROM glass_interest
 UNION ALL
-SELECT * FROM fukuhoku_interest;
+SELECT * FROM fukuhoku_interest
+UNION ALL
+-- 福岡支店計（工事部計 + 硝子樹脂計 + 福北センター）
+SELECT
+  year_month,
+  '福岡支店計' AS detail_category,
+  SUM(interest_expense) AS interest_expense
+FROM (
+  SELECT year_month, interest_expense FROM construction_interest
+  UNION ALL
+  SELECT year_month, interest_expense FROM glass_interest
+  UNION ALL
+  SELECT year_month, interest_expense FROM fukuhoku_interest
+)
+GROUP BY year_month;

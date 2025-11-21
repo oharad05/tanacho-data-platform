@@ -999,7 +999,11 @@ tokyo_consolidated AS (
       FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
       WHERE branch = '福岡支店' AND year_month = sa.year_month
     ) AS other_non_operating_income,
-    NULL AS non_operating_expenses,
+    (
+      SELECT interest_expense
+      FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_fukuoka`
+      WHERE detail_category = '福岡支店計' AND year_month = sa.year_month
+    ) AS non_operating_expenses,
     (
       SELECT SUM(miscellaneous_loss_amount)
       FROM `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss`
@@ -1027,6 +1031,11 @@ tokyo_consolidated AS (
         SELECT SUM(other_non_operating_income)
         FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_income`
         WHERE branch = '福岡支店' AND year_month = sa.year_month
+      ), 0)
+      - COALESCE((
+        SELECT interest_expense
+        FROM `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_fukuoka`
+        WHERE detail_category = '福岡支店計' AND year_month = sa.year_month
       ), 0)
       - COALESCE((
         SELECT SUM(miscellaneous_loss_amount)

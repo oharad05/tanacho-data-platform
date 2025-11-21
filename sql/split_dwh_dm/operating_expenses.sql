@@ -153,7 +153,7 @@ fukuoka_direct_expenses AS (
   -- 福岡支店: 部門単位で集計 + 業務部案分
   SELECT
     sales_accounting_period AS year_month,
-    -- 工事部(construction_department)の直接費用
+    -- 工事部計: 「工事営業部」または「施工」カラムの合計
     SUM(
       CASE
         WHEN code IN (
@@ -161,12 +161,12 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN construction_department
+        ) THEN construction_sales_department + construction
         ELSE 0
       END
     ) AS construction_direct,
 
-    -- 硝子樹脂部(glass_building_material_sales_department)の直接費用
+    -- 硝子樹脂計: 「硝子建材」または「樹脂」カラムの合計
     SUM(
       CASE
         WHEN code IN (
@@ -174,7 +174,7 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN glass_building_material_sales_department
+        ) THEN glass_building_material + resin
         ELSE 0
       END
     ) AS glass_resin_direct,
