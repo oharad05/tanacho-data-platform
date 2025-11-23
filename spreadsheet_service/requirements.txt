@@ -1,0 +1,7 @@
+google-cloud-storage>=2.16.0
+google-cloud-bigquery>=3.11.0
+pandas>=2.2.2
+Flask>=3.0
+gunicorn>=21.2
+google-api-python-client>=2.141
+google-auth>=2.33
