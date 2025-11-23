@@ -34,7 +34,7 @@ aggregated_metrics AS (
   WHERE branch = '福岡支店'
 ),
 -- ============================================================
--- 経常利益の累積計算（期首4/1から当月まで）
+-- 経常利益の累積計算（期首9/1から当月まで）
 -- ============================================================
 cumulative_recurring_profit AS (
   WITH
@@ -45,14 +45,14 @@ cumulative_recurring_profit AS (
     WHERE recurring_profit_actual IS NOT NULL
   ),
 
-  -- 期首を月ごとに計算（期首は4/1）
+  -- 期首を月ごとに計算（期首は9/1）
   fiscal_year_starts AS (
     SELECT DISTINCT
       year_month,
       CASE
-        WHEN EXTRACT(MONTH FROM year_month) >= 4
-        THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
-        ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
+        WHEN EXTRACT(MONTH FROM year_month) >= 9
+        THEN DATE(EXTRACT(YEAR FROM year_month), 9, 1)
+        ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 9, 1)
       END AS fiscal_start_date
     FROM org_categories_months
   )
@@ -976,7 +976,7 @@ vertical_format AS (
     recurring_profit_actual
   FROM aggregated_metrics
   UNION ALL
-  -- 経常利益: 累積本年目標（期首4/1からの累積）
+  -- 経常利益: 累積本年目標（期首9/1からの累積）
   SELECT
     year_month,
     '経常利益',
@@ -1003,7 +1003,7 @@ vertical_format AS (
   FROM cumulative_recurring_profit
   WHERE cumulative_target IS NOT NULL
   UNION ALL
-  -- 経常利益: 累積本年実績（期首4/1からの累積）
+  -- 経常利益: 累積本年実績（期首9/1からの累積）
   SELECT
     year_month,
     '経常利益',

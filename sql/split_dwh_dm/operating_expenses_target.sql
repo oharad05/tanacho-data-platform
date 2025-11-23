@@ -151,9 +151,9 @@ fukuoka_target AS (
   UNION ALL
   SELECT period, '福岡支店', '硝子樹脂部', '樹脂', resin * 1000 FROM fukuoka_profit_plan WHERE item = '営業経費'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '営業経費'
+  SELECT period, '福岡支店', 'GSセンター', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '営業経費'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '営業経費'
+  SELECT period, '福岡支店', '福北センター', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '営業経費'
 )
 
 SELECT * FROM tokyo_target

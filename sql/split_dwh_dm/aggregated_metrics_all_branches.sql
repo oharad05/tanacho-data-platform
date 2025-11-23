@@ -900,24 +900,24 @@ tokyo_consolidated AS (
 
   UNION ALL
 
-  -- GSセンター（売上なし、費用のみ）
+  -- GSセンター（売上・売上総利益はスプレッドシートから取得）
   SELECT
     oe.year_month,
     'GSセンター' AS organization,
     'GSセンター' AS detail_category,
-    0 AS sales_actual,
-    NULL AS sales_target,
+    COALESCE(gs.sales_amount, 0) AS sales_actual,
+    st_sales.target_amount AS sales_target,
     0 AS sales_prev_year,
-    0 AS gross_profit_actual,
-    NULL AS gross_profit_target,
+    COALESCE(gs.gross_profit, 0) AS gross_profit_actual,
+    st_gp.target_amount AS gross_profit_target,
     0 AS gross_profit_prev_year,
-    NULL AS gross_profit_margin_actual,
-    NULL AS gross_profit_margin_target,
+    SAFE_DIVIDE(COALESCE(gs.gross_profit, 0), NULLIF(COALESCE(gs.sales_amount, 0), 0)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(st_gp.target_amount, st_sales.target_amount) AS gross_profit_margin_target,
     NULL AS gross_profit_margin_prev_year,
     oe.operating_expense_amount AS operating_expense_actual,
     oet.target_amount AS operating_expense_target,
     NULL AS operating_expense_prev_year,
-    (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_actual,
+    (COALESCE(gs.gross_profit, 0) - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_actual,
     oit.target_amount AS operating_income_target,
     (0 - COALESCE(oe.operating_expense_amount, 0)) AS operating_income_prev_year,
     noi.rebate_income,
@@ -926,7 +926,7 @@ tokyo_consolidated AS (
     ml.miscellaneous_loss_amount AS miscellaneous_loss,
     NULL AS head_office_expense,
     (
-      0
+      COALESCE(gs.gross_profit, 0)
       - COALESCE(oe.operating_expense_amount, 0)
       + COALESCE(noi.rebate_income, 0)
       + COALESCE(noi.other_non_operating_income, 0)
@@ -934,33 +934,39 @@ tokyo_consolidated AS (
     ) AS recurring_profit_actual,
     rpt.target_amount AS recurring_profit_target
   FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ss_gs_sales_profit` gs
+    ON oe.year_month = gs.posting_month AND gs.sales_office = 'GSセンター'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
+    ON oe.year_month = st_sales.year_month AND st_sales.metric_type = 'sales' AND st_sales.organization = 'GSセンター' AND st_sales.detail_category = 'GSセンター' AND st_sales.branch = '福岡支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
+    ON oe.year_month = st_gp.year_month AND st_gp.metric_type = 'gross_profit' AND st_gp.organization = 'GSセンター' AND st_gp.detail_category = 'GSセンター' AND st_gp.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
     ON oe.year_month = noi.year_month AND noi.detail_category = 'GSセンター' AND noi.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
     ON oe.year_month = ml.year_month AND ml.detail_category = 'GSセンター' AND ml.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
-    ON oe.year_month = oet.year_month AND oet.organization = '硝子樹脂部' AND oet.detail_category = 'GSセンター' AND oet.branch = '福岡支店'
+    ON oe.year_month = oet.year_month AND oet.organization = 'GSセンター' AND oet.detail_category = 'GSセンター' AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
-    ON oe.year_month = oit.year_month AND oit.organization = '硝子樹脂部' AND oit.detail_category = 'GSセンター' AND oit.branch = '福岡支店'
+    ON oe.year_month = oit.year_month AND oit.organization = 'GSセンター' AND oit.detail_category = 'GSセンター' AND oit.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
-    ON oe.year_month = rpt.year_month AND rpt.organization = '硝子樹脂部' AND rpt.detail_category = 'GSセンター' AND rpt.branch = '福岡支店'
+    ON oe.year_month = rpt.year_month AND rpt.organization = 'GSセンター' AND rpt.detail_category = 'GSセンター' AND rpt.branch = '福岡支店'
   WHERE oe.branch = '福岡支店'
     AND oe.detail_category = 'GSセンター'
 
   UNION ALL
 
-  -- 支店レベル（福岡支店計）※各部署の合計を集計
+  -- 支店レベル（福岡支店計）※各部署の合計を集計（GSセンターのスプレッドシート売上を含む）
   SELECT
     sa.year_month,
     '福岡支店' AS organization,
     '福岡支店計' AS detail_category,
-    SUM(sa.sales_amount) AS sales_actual,
+    SUM(sa.sales_amount) + COALESCE(MAX(gs.sales_amount), 0) AS sales_actual,
     MAX(st_sales.target_amount) AS sales_target,
     SUM(sap.sales_amount) AS sales_prev_year,
-    SUM(sa.gross_profit_amount) AS gross_profit_actual,
+    SUM(sa.gross_profit_amount) + COALESCE(MAX(gs.gross_profit), 0) AS gross_profit_actual,
     MAX(st_gp.target_amount) AS gross_profit_target,
     SUM(sap.gross_profit_amount) AS gross_profit_prev_year,
-    SAFE_DIVIDE(SUM(sa.gross_profit_amount), SUM(sa.sales_amount)) AS gross_profit_margin_actual,
+    SAFE_DIVIDE(SUM(sa.gross_profit_amount) + COALESCE(MAX(gs.gross_profit), 0), SUM(sa.sales_amount) + COALESCE(MAX(gs.sales_amount), 0)) AS gross_profit_margin_actual,
     SAFE_DIVIDE(MAX(st_gp.target_amount), MAX(st_sales.target_amount)) AS gross_profit_margin_target,
     SAFE_DIVIDE(SUM(sap.gross_profit_amount), SUM(sap.sales_amount)) AS gross_profit_margin_prev_year,
     (
@@ -975,7 +981,7 @@ tokyo_consolidated AS (
       WHERE branch = '福岡支店' AND year_month = sa.year_month
     ) AS operating_expense_prev_year,
     (
-      SUM(sa.gross_profit_amount) - COALESCE((
+      SUM(sa.gross_profit_amount) + COALESCE(MAX(gs.gross_profit), 0) - COALESCE((
         SELECT SUM(operating_expense_amount)
         FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
         WHERE branch = '福岡支店' AND year_month = sa.year_month
@@ -1016,7 +1022,7 @@ tokyo_consolidated AS (
         AND detail_category IN ('工事部計', '硝子樹脂計', 'GSセンター', '福北センター')
     ) AS head_office_expense,
     (
-      SUM(sa.gross_profit_amount)
+      SUM(sa.gross_profit_amount) + COALESCE(MAX(gs.gross_profit), 0)
       - COALESCE((
         SELECT SUM(operating_expense_amount)
         FROM `data-platform-prod-475201.corporate_data_dwh.operating_expenses`
@@ -1051,6 +1057,8 @@ tokyo_consolidated AS (
     ) AS recurring_profit_actual,
     MAX(rpt.target_amount) AS recurring_profit_target
   FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ss_gs_sales_profit` gs
+    ON sa.year_month = gs.posting_month AND gs.sales_office = 'GSセンター'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` sap
     ON sa.year_month = sap.year_month AND sa.organization = sap.organization AND sa.detail_category = sap.detail_category AND sap.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
@@ -1068,11 +1076,113 @@ tokyo_consolidated AS (
 )
 
 -- ============================================================
+-- 在庫損益の適用（スプレッドシートからの連携データ）
+-- ============================================================
+-- 東京支店: 在庫損益を売上総利益に加算
+,tokyo_with_inventory AS (
+  SELECT
+    ta.year_month,
+    ta.organization,
+    ta.detail_category,
+    ta.sales_actual,
+    ta.sales_target,
+    ta.sales_prev_year,
+    ta.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS gross_profit_actual,
+    ta.gross_profit_target,
+    ta.gross_profit_prev_year,
+    SAFE_DIVIDE(ta.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0), ta.sales_actual) AS gross_profit_margin_actual,
+    ta.gross_profit_margin_target,
+    ta.gross_profit_margin_prev_year,
+    ta.operating_expense_actual,
+    ta.operating_expense_target,
+    ta.operating_expense_prev_year,
+    ta.operating_income_actual + COALESCE(inv.inventory_profit_loss, 0) AS operating_income_actual,
+    ta.operating_income_target,
+    ta.operating_income_prev_year,
+    ta.rebate_income,
+    ta.other_non_operating_income,
+    ta.non_operating_expenses,
+    ta.miscellaneous_loss,
+    ta.head_office_expense,
+    ta.recurring_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS recurring_profit_actual,
+    ta.recurring_profit_target
+  FROM tokyo_aggregated ta
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ss_inventory_advance_tokyo` inv
+    ON ta.year_month = inv.posting_month AND ta.detail_category = inv.category
+)
+
+-- 長崎支店: 在庫損益を売上総利益に加算
+,nagasaki_with_inventory AS (
+  SELECT
+    na.year_month,
+    na.organization,
+    na.detail_category,
+    na.sales_actual,
+    na.sales_target,
+    na.sales_prev_year,
+    na.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS gross_profit_actual,
+    na.gross_profit_target,
+    na.gross_profit_prev_year,
+    SAFE_DIVIDE(na.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0), na.sales_actual) AS gross_profit_margin_actual,
+    na.gross_profit_margin_target,
+    na.gross_profit_margin_prev_year,
+    na.operating_expense_actual,
+    na.operating_expense_target,
+    na.operating_expense_prev_year,
+    na.operating_income_actual + COALESCE(inv.inventory_profit_loss, 0) AS operating_income_actual,
+    na.operating_income_target,
+    na.operating_income_prev_year,
+    na.rebate_income,
+    na.other_non_operating_income,
+    na.non_operating_expenses,
+    na.miscellaneous_loss,
+    na.head_office_expense,
+    na.recurring_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS recurring_profit_actual,
+    na.recurring_profit_target
+  FROM nagasaki_aggregated na
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki` inv
+    ON na.year_month = inv.posting_month AND na.detail_category = inv.category
+)
+
+-- 福岡支店: 在庫損益を売上総利益に加算
+,fukuoka_with_inventory AS (
+  SELECT
+    fa.year_month,
+    fa.organization,
+    fa.detail_category,
+    fa.sales_actual,
+    fa.sales_target,
+    fa.sales_prev_year,
+    fa.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS gross_profit_actual,
+    fa.gross_profit_target,
+    fa.gross_profit_prev_year,
+    SAFE_DIVIDE(fa.gross_profit_actual + COALESCE(inv.inventory_profit_loss, 0), fa.sales_actual) AS gross_profit_margin_actual,
+    fa.gross_profit_margin_target,
+    fa.gross_profit_margin_prev_year,
+    fa.operating_expense_actual,
+    fa.operating_expense_target,
+    fa.operating_expense_prev_year,
+    fa.operating_income_actual + COALESCE(inv.inventory_profit_loss, 0) AS operating_income_actual,
+    fa.operating_income_target,
+    fa.operating_income_prev_year,
+    fa.rebate_income,
+    fa.other_non_operating_income,
+    fa.non_operating_expenses,
+    fa.miscellaneous_loss,
+    fa.head_office_expense,
+    fa.recurring_profit_actual + COALESCE(inv.inventory_profit_loss, 0) AS recurring_profit_actual,
+    fa.recurring_profit_target
+  FROM fukuoka_aggregated fa
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ss_inventory_advance_fukuoka` inv
+    ON fa.year_month = inv.posting_month AND fa.detail_category = inv.category
+)
+
+-- ============================================================
 -- 最終出力: 東京・長崎・福岡の3支店をUNION ALL
 -- ============================================================
-SELECT '東京支店' AS branch, * FROM tokyo_aggregated
+SELECT '東京支店' AS branch, * FROM tokyo_with_inventory
 UNION ALL
-SELECT '長崎支店' AS branch, * FROM nagasaki_aggregated
+SELECT '長崎支店' AS branch, * FROM nagasaki_with_inventory
 UNION ALL
-SELECT '福岡支店' AS branch, * FROM fukuoka_aggregated
+SELECT '福岡支店' AS branch, * FROM fukuoka_with_inventory
 ;

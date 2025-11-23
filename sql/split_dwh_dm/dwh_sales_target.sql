@@ -207,9 +207,9 @@ fukuoka_target AS (
   UNION ALL
   SELECT period, '福岡支店', 'sales', '硝子樹脂部', '樹脂', resin * 1000 FROM fukuoka_profit_plan WHERE item = '売上高'
   UNION ALL
-  SELECT period, '福岡支店', 'sales', '硝子樹脂部', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上高'
+  SELECT period, '福岡支店', 'sales', 'GSセンター', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上高'
   UNION ALL
-  SELECT period, '福岡支店', 'sales', '硝子樹脂部', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上高'
+  SELECT period, '福岡支店', 'sales', '福北センター', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上高'
 
   UNION ALL
 
@@ -232,9 +232,9 @@ fukuoka_target AS (
   UNION ALL
   SELECT period, '福岡支店', 'gross_profit', '硝子樹脂部', '樹脂', resin * 1000 FROM fukuoka_profit_plan WHERE item = '売上総利益'
   UNION ALL
-  SELECT period, '福岡支店', 'gross_profit', '硝子樹脂部', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上総利益'
+  SELECT period, '福岡支店', 'gross_profit', 'GSセンター', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上総利益'
   UNION ALL
-  SELECT period, '福岡支店', 'gross_profit', '硝子樹脂部', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上総利益'
+  SELECT period, '福岡支店', 'gross_profit', '福北センター', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '売上総利益'
 )
 
 SELECT * FROM tokyo_target

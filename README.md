@@ -14,11 +14,11 @@ Google Drive上の月次データをGCSに取り込み、BigQueryに連携し、
   - 例: 9/1のレポートの場合、実行日 = 2025年10月
 - **作成月**: 実行日の前月（=全ての数字が集まっている最新の月）
   - 例: 9/1のレポートの場合、作成月 = 2025年9月
-- **期首**: 会計年度の開始日 = **4月1日**
-  - 4月以降の月の期首: その年の4月1日
-  - 1-3月の期首: 前年の4月1日
-  - 例: 2024年9月の期首 = 2024年4月1日
-  - 例: 2025年2月の期首 = 2024年4月1日
+- **期首**: 会計年度の開始日 = **9月1日**
+  - 9月以降の月の期首: その年の9月1日
+  - 1-8月の期首: 前年の9月1日
+  - 例: 2024年9月の期首 = 2024年9月1日
+  - 例: 2025年2月の期首 = 2024年9月1日
 
 ### 営業外費用（社内利息）の計算における適用例
 
@@ -311,21 +311,21 @@ cd sql/split_dwh_dm
 
 ### 期首（会計年度開始日）
 
-**期首日: 4月1日**
+**期首日: 9月1日**
 
 全ての累積計算（経常利益の累積本年実績・累積本年目標）は、期首から当月までの合算値として計算されます。
 
 ### 期首計算ロジック
 
 ```sql
--- 期首を月ごとに計算（期首は4/1）
+-- 期首を月ごとに計算（期首は9/1）
 fiscal_year_starts AS (
   SELECT DISTINCT
     year_month,
     CASE
-      WHEN EXTRACT(MONTH FROM year_month) >= 4
-      THEN DATE(EXTRACT(YEAR FROM year_month), 4, 1)
-      ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 4, 1)
+      WHEN EXTRACT(MONTH FROM year_month) >= 9
+      THEN DATE(EXTRACT(YEAR FROM year_month), 9, 1)
+      ELSE DATE(EXTRACT(YEAR FROM year_month) - 1, 9, 1)
     END AS fiscal_start_date
   FROM org_categories_months
 )
@@ -333,8 +333,8 @@ fiscal_year_starts AS (
 
 ### 累積計算の対象
 
-- **累積本年実績（経常利益）**: 期首（4/1）から当月までの経常利益実績の合計
-- **累積本年目標（経常利益）**: 期首（4/1）から当月までの経常利益目標の合計
+- **累積本年実績（経常利益）**: 期首（9/1）から当月までの経常利益実績の合計
+- **累積本年目標（経常利益）**: 期首（9/1）から当月までの経常利益目標の合計
 
 ### 実装箇所
 
@@ -349,11 +349,126 @@ fiscal_year_starts AS (
 
 | 対象月 | 期首 | 累積範囲 |
 |--------|------|----------|
-| 2024年4月 | 2024年4月1日 | 4月のみ |
-| 2024年9月 | 2024年4月1日 | 4月〜9月 |
-| 2025年2月 | 2024年4月1日 | 2024年4月〜2025年2月 |
-| 2025年4月 | 2025年4月1日 | 2025年4月のみ |
-| 2025年9月 | 2025年4月1日 | 2025年4月〜9月 |
+| 2024年9月 | 2024年9月1日 | 9月のみ |
+| 2024年12月 | 2024年9月1日 | 9月〜12月 |
+| 2025年2月 | 2024年9月1日 | 2024年9月〜2025年2月 |
+| 2025年8月 | 2024年9月1日 | 2024年9月〜2025年8月 |
+| 2025年9月 | 2025年9月1日 | 2025年9月のみ |
+
+## スプレッドシート連携
+
+### 概要
+
+Google スプレッドシートから直接BigQueryにデータを連携する機能です。
+既存のDrive連携（Excelファイル）とは**完全に独立**した処理として実装されています。
+
+### アーキテクチャ
+
+```
+[スプレッドシート]
+      │
+      │ Sheets API で取得 → CSV変換
+      ▼
+[GCS: gs://data-platform-landing-prod/spreadsheet/]
+      │
+      ├── raw/{table_name}.csv              # 取得データ（CSV）
+      └── config/
+          ├── columns/                      # カラム変換用
+          │   ├── {table_name}.csv
+          │   └── ...
+          └── mapping/                      # テーブル名定義用
+              └── mapping_files.csv
+      │
+      │ bq load
+      ▼
+[BigQuery: corporate_data.ss_{table_name}]
+```
+
+### Drive連携との分離
+
+| 項目 | Drive連携（既存） | スプレッドシート連携（新規） |
+|------|------------------|---------------------------|
+| **Cloud Runサービス** | `drive-to-gcs` | `spreadsheet-to-bq` |
+| **ソースコード** | `run_service/main.py` | `spreadsheet_service/main.py` |
+| **データソース** | Drive Folder ID | Sheets API（sheet_id指定） |
+| **GCSパス** | `/raw/{yyyymm}/`, `/proceed/{yyyymm}/` | `/spreadsheet/raw/` |
+| **設定ファイル** | `/config/mapping/mapping_files.csv` | `/spreadsheet/config/mapping/mapping_files.csv` |
+| **BQテーブル** | `corporate_data.*` | `corporate_data.ss_*` |
+| **トリガー** | Pub/Sub: `drive-monthly` | Cloud Scheduler: `spreadsheet-monthly` |
+
+### 設定ファイル
+
+#### マッピングファイル（シートID → テーブル名）
+
+`gs://data-platform-landing-prod/spreadsheet/config/mapping/mapping_files.csv`
+
+```csv
+sheet_id,sheet_name,en_name
+1ABC...XYZ,売上データ,sales_data
+2DEF...UVW,費用データ,cost_data
+```
+
+| カラム | 説明 |
+|--------|------|
+| `sheet_id` | スプレッドシートのID |
+| `sheet_name` | 取得対象のシート名（複数シートある場合） |
+| `en_name` | BigQueryテーブル名（`ss_` プレフィックスは処理時に付与） |
+
+#### カラムマッピング（日本語 → 英語）
+
+`gs://data-platform-landing-prod/spreadsheet/config/columns/{table_name}.csv`
+
+```csv
+jp_name,en_name,data_type
+年月,year_month,DATE
+部門,department,STRING
+売上金額,sales_amount,INTEGER
+```
+
+### 実行方法
+
+#### 自動実行（月次）
+
+Cloud Schedulerにより毎月自動実行されます。
+
+#### 手動実行
+
+```bash
+# GCPコンソールから
+# Cloud Run > spreadsheet-to-bq > 「実行」ボタン
+
+# またはcurlで
+curl -X POST "https://spreadsheet-to-bq-xxx.asia-northeast1.run.app/sync" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)"
+```
+
+### デグレ防止設計
+
+スプレッドシート連携は以下の点でDrive連携と完全に分離されており、相互に影響しません：
+
+1. **サービス分離**: 別のCloud Run Service（`spreadsheet-to-bq`）
+2. **コード分離**: 別ディレクトリ（`spreadsheet_service/`）
+3. **GCSパス分離**: `/spreadsheet/` プレフィックスで完全分離
+4. **テーブル分離**: `ss_` プレフィックスで既存テーブルと区別
+5. **トリガー分離**: 別のCloud Scheduler Job
+
+### ディレクトリ構成
+
+```
+tanacho-pipeline/
+├── run_service/                    # 既存（Drive連携）
+│   ├── Dockerfile
+│   ├── main.py
+│   └── requirements.txt
+│
+├── spreadsheet_service/            # 新規（スプシ連携）
+│   ├── Dockerfile
+│   ├── main.py
+│   └── requirements.txt
+│
+└── gcs_to_bq_service/              # 既存（GCS→BQ）
+    └── ...
+```
 
 ## 開発環境
 

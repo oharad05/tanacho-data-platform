@@ -2,7 +2,7 @@
 ============================================================
 DM: 累計経営資料（全支店統合版）- Looker Studio用
 ============================================================
-目的: 期首（4月）からの累計値を計算し、グラフ可視化用のデータソースを作成
+目的: 期首（9月）からの累計値を計算し、グラフ可視化用のデータソースを作成
 データソース: management_documents_all_period_all
 対象支店: 東京支店、長崎支店、福岡支店
 対象部門: main_display_flag=1 のもの
@@ -12,7 +12,7 @@ DM: 累計経営資料（全支店統合版）- Looker Studio用
   - date_sort_key: 日付ソート用キー（YYYYMM形式の整数）
   - date_label: 日付表示用ラベル（例: "9月", "10月"）
   - fiscal_year: 会計年度（例: "2024年度"）
-  - fiscal_month: 会計月（4月=1, 5月=2, ..., 3月=12）
+  - fiscal_month: 会計月（9月=1, 10月=2, ..., 8月=12）
   - main_department: 支店名
   - main_department_sort_order: 支店ソート順
   - secondary_department: 部門名
@@ -24,8 +24,8 @@ DM: 累計経営資料（全支店統合版）- Looker Studio用
   - cumulative_value: 期首からの累計値（千円）
 
 累計計算ロジック:
-  - 会計年度: 4月〜翌3月
-  - 累計: 期首（4月）から当月までの合計
+  - 会計年度: 9月〜翌8月
+  - 累計: 期首（9月）から当月までの合計
   - 営業利益率: 累計営業利益 ÷ 累計売上高 × 100
 ============================================================
 */
@@ -43,15 +43,15 @@ base_data AS (
     EXTRACT(YEAR FROM date) * 100 + EXTRACT(MONTH FROM date) AS date_sort_key,
     -- 日付表示用ラベル（例: "9月"）
     CONCAT(CAST(EXTRACT(MONTH FROM date) AS STRING), '月') AS date_label,
-    -- 会計年度: 4月〜翌3月（4月以降は当年、1-3月は前年）
+    -- 会計年度: 9月〜翌8月（9月以降は当年、1-8月は前年）
     CASE
-      WHEN EXTRACT(MONTH FROM date) >= 4 THEN CONCAT(CAST(EXTRACT(YEAR FROM date) AS STRING), '年度')
+      WHEN EXTRACT(MONTH FROM date) >= 9 THEN CONCAT(CAST(EXTRACT(YEAR FROM date) AS STRING), '年度')
       ELSE CONCAT(CAST(EXTRACT(YEAR FROM date) - 1 AS STRING), '年度')
     END AS fiscal_year,
-    -- 会計月: 4月=1, 5月=2, ..., 3月=12
+    -- 会計月: 9月=1, 10月=2, ..., 8月=12
     CASE
-      WHEN EXTRACT(MONTH FROM date) >= 4 THEN EXTRACT(MONTH FROM date) - 3
-      ELSE EXTRACT(MONTH FROM date) + 9
+      WHEN EXTRACT(MONTH FROM date) >= 9 THEN EXTRACT(MONTH FROM date) - 8
+      ELSE EXTRACT(MONTH FROM date) + 4
     END AS fiscal_month,
     main_department,
     main_department_sort_order,

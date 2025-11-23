@@ -1,0 +1,11 @@
+jp_name,en_name,data_type
+計上月,posting_month,DATE
+支店名,branch_name,STRING
+営業所,sales_office,STRING
+分類,category,STRING
+在庫損益(円),inventory_profit_loss,INTEGER
+前受け金(円),advance_received,INTEGER
+入力状況,input_status,STRING
+登録日時,created_at,TIMESTAMP
+修正日時,updated_at,TIMESTAMP
+記入者,author,STRING
