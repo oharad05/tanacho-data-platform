@@ -655,12 +655,16 @@ def load_endpoint():
         "tables": ["sales_target_and_achievements"],
         "replace": true
     }
+
+    注意: 冪等性を保証するため、パーティション削除は常に実行されます。
+    replace=false を指定しても、対象月のデータは削除されてから追加されます。
     """
     try:
         payload = request.get_json(force=True, silent=True) or {}
         yyyymm = payload.get("yyyymm")
         tables = payload.get("tables", list(TABLE_CONFIG.keys()))
-        replace_existing = payload.get("replace", False)
+        # 冪等性を保証するため、デフォルトをTrueに変更
+        replace_existing = payload.get("replace", True)
 
         if not yyyymm:
             return jsonify({"error": "yyyymm is required"}), 400
@@ -668,7 +672,7 @@ def load_endpoint():
         print("=" * 60)
         print(f"proceed/ → BigQuery ロード処理")
         print(f"対象年月: {yyyymm}")
-        print(f"モード: {'REPLACE' if replace_existing else 'APPEND'}")
+        print(f"モード: REPLACE（冪等性保証のため常にパーティション削除を実行）")
         print("=" * 60)
 
         bq_client = bigquery.Client(project=PROJECT_ID)
@@ -681,9 +685,8 @@ def load_endpoint():
         for table_name in tables:
             print(f"\n📊 処理中: {table_name}")
 
-            # 既存データの削除
-            if replace_existing:
-                delete_partition_data(bq_client, table_name, yyyymm)
+            # 冪等性を保証するため、常にパーティション削除を実行
+            delete_partition_data(bq_client, table_name, yyyymm)
 
             # BigQueryへロード
             if load_csv_to_bigquery(bq_client, table_name, yyyymm):
@@ -723,6 +726,8 @@ def pubsub_endpoint():
             "data": "eyJ5eXl5bW0iOiAiMjAyNTA5In0="  # base64: {"yyyymm": "202509"}
         }
     }
+
+    注意: 冪等性を保証するため、パーティション削除は常に実行されます。
     """
     try:
         envelope = request.get_json(force=True, silent=True) or {}
@@ -735,7 +740,8 @@ def pubsub_endpoint():
         payload = json.loads(base64.b64decode(data_b64).decode("utf-8"))
         yyyymm = payload.get("yyyymm")
         tables = payload.get("tables", list(TABLE_CONFIG.keys()))
-        replace_existing = payload.get("replace", True)
+        # replace パラメータは後方互換性のために残すが、冪等性保証のため常に削除を実行
+        # replace_existing = payload.get("replace", True)  # 未使用
 
         if not yyyymm:
             return jsonify({"error": "yyyymm is required"}), 400
@@ -764,6 +770,7 @@ def pubsub_endpoint():
         print("=" * 60)
         print(f"proceed/ → BigQuery ロード処理")
         print(f"対象年月: {yyyymm}")
+        print(f"モード: REPLACE（冪等性保証のため常にパーティション削除を実行）")
         print("=" * 60)
 
         bq_client = bigquery.Client(project=PROJECT_ID)
@@ -773,8 +780,8 @@ def pubsub_endpoint():
         for table_name in tables:
             print(f"\n📊 処理中: {table_name}")
 
-            if replace_existing:
-                delete_partition_data(bq_client, table_name, yyyymm)
+            # 冪等性を保証するため、常にパーティション削除を実行
+            delete_partition_data(bq_client, table_name, yyyymm)
 
             if load_csv_to_bigquery(bq_client, table_name, yyyymm):
                 update_table_and_column_descriptions(bq_client, storage_client, table_name)

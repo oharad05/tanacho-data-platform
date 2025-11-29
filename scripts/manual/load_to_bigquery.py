@@ -251,64 +251,93 @@ def load_csv_to_bigquery(
         print(f"   ❌ 予期しないエラー: {e}")
         return False
 
-def delete_partition_data(
+def delete_partition_data_by_csv(
     client: bigquery.Client,
     table_name: str,
-    yyyymm: str
+    gcs_uri: str
 ) -> bool:
     """
-    既存データを削除（重複防止）
+    CSVファイルの実際のデータ月に基づいて既存データを削除（重複防止）
 
-    CSVには複数月のデータが含まれている場合があるため、
-    テーブルごとに適切な削除方法を使用
+    フォルダ名ではなく、CSVに含まれる実際のデータ月を読み取って削除する。
+    これにより、フォルダ名とデータ月がずれている場合でも正しく動作する。
 
     Args:
         client: BigQueryクライアント
         table_name: テーブル名
-        yyyymm: 対象年月（例: 202509）
+        gcs_uri: GCS上のCSVファイルURI
 
     Returns:
         成功時True
     """
+    import io
+
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     partition_field = TABLE_CONFIG[table_name]["partition_field"]
 
-    # yyyymmから年月を抽出
-    year = yyyymm[:4]
-    month = yyyymm[4:6]
-
-    # テーブル全体を削除するテーブル（CSVに複数月のデータが含まれるため）
-    if table_name in ["billing_balance", "profit_plan_term", "ledger_loss"]:
-        delete_query = f"DELETE FROM `{table_id}` WHERE TRUE"
-        print(f"   🗑️  全データ削除中（CSVに複数月のデータが含まれるため）")
-    elif table_name in ["ledger_income"]:
-        # DATETIME型で、指定月のすべての日付を削除
-        delete_query = f"""
-        DELETE FROM `{table_id}`
-        WHERE DATE_TRUNC(DATE({partition_field}), MONTH) = '{year}-{month}-01'
-        """
-        print(f"   🗑️  既存データ削除中: {year}-{month}のすべての日付")
-    else:
-        # その他のテーブルは指定月のみ削除
-        delete_query = f"""
-        DELETE FROM `{table_id}`
-        WHERE DATE_TRUNC({partition_field}, MONTH) = '{year}-{month}-01'
-        """
-        print(f"   🗑️  既存データ削除中: {year}-{month}")
-
     try:
-        query_job = client.query(delete_query)
-        query_job.result()  # 完了を待機
+        # GCSからCSVを読み込んでデータ月を取得
+        storage_client = storage.Client()
 
-        if query_job.num_dml_affected_rows:
-            print(f"      削除: {query_job.num_dml_affected_rows} 行")
+        # gs://bucket/path の形式からバケット名とパスを抽出
+        gcs_path = gcs_uri.replace("gs://", "")
+        bucket_name = gcs_path.split("/")[0]
+        blob_path = "/".join(gcs_path.split("/")[1:])
+
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        csv_content = blob.download_as_bytes()
+
+        df = pd.read_csv(io.BytesIO(csv_content))
+
+        if partition_field not in df.columns:
+            print(f"   ⚠️  パーティションフィールド '{partition_field}' がCSVに存在しません")
+            return False
+
+        # CSVに含まれるユニークな月を取得
+        unique_months = df[partition_field].dropna().unique()
+
+        if len(unique_months) == 0:
+            print(f"   ⚠️  CSVにデータがありません")
+            return True
+
+        print(f"   🗑️  CSVに含まれるデータ月: {list(unique_months)}")
+
+        total_deleted = 0
+
+        for month_value in unique_months:
+            # 日付型かどうかで処理を分ける
+            if table_name in ["ledger_income", "ledger_loss"]:
+                # DATETIME型の場合、月の範囲で削除
+                # month_valueは "2024-09-01" のような形式を想定
+                delete_query = f"""
+                DELETE FROM `{table_id}`
+                WHERE DATE_TRUNC(DATE({partition_field}), MONTH) = DATE('{month_value}')
+                """
+            else:
+                # DATE型の場合
+                delete_query = f"""
+                DELETE FROM `{table_id}`
+                WHERE {partition_field} = DATE('{month_value}')
+                """
+
+            query_job = client.query(delete_query)
+            query_job.result()
+
+            if query_job.num_dml_affected_rows:
+                total_deleted += query_job.num_dml_affected_rows
+
+        if total_deleted > 0:
+            print(f"      削除: {total_deleted} 行")
         else:
             print(f"      削除対象なし")
 
         return True
 
     except Exception as e:
-        print(f"   ⚠️  削除処理スキップ: {e}")
+        print(f"   ⚠️  削除処理エラー: {e}")
+        import traceback
+        traceback.print_exc()
         return True  # 削除失敗してもロードは続行
 
 def process_all_tables(yyyymm: str, replace_existing: bool = True):
@@ -359,7 +388,7 @@ def process_all_tables(yyyymm: str, replace_existing: bool = True):
         
         # 既存データの削除（オプション）
         if replace_existing:
-            delete_partition_data(client, table_name, yyyymm)
+            delete_partition_data_by_csv(client, table_name, gcs_uri)
         
         # BigQueryへロード
         if load_csv_to_bigquery(client, table_name, gcs_uri, yyyymm):
