@@ -102,11 +102,20 @@ tokyo_expense_data AS (
     ON oe.year_month = hoe.year_month AND oe.detail_category = hoe.detail_category AND hoe.branch = '東京支店'
 ),
 
+-- 日付マスター: 実績と目標の両方から日付×組織×detail_categoryの組み合わせを収集
+tokyo_date_master AS (
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM tokyo_base
+  UNION DISTINCT
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM tokyo_target
+),
+
 tokyo_consolidated AS (
   SELECT
-    sa.year_month,
-    sa.organization,
-    sa.detail_category,
+    dm.year_month,
+    dm.organization,
+    dm.detail_category,
     sa.sales_actual,
     st_sales.target_amount AS sales_target,
     COALESCE(sa_prev.sales_amount, 0) AS sales_prev_year,
@@ -129,19 +138,21 @@ tokyo_consolidated AS (
     CAST(NULL AS FLOAT64) AS head_office_expense,
     CAST(NULL AS FLOAT64) AS recurring_profit_actual,
     rpt.target_amount AS recurring_profit_target
-  FROM tokyo_base sa
+  FROM tokyo_date_master dm
+  LEFT JOIN tokyo_base sa
+    ON dm.year_month = sa.year_month AND dm.organization = sa.organization AND dm.detail_category = sa.detail_category
   LEFT JOIN tokyo_prev sa_prev
-    ON sa.year_month = sa_prev.year_month AND sa.organization = sa_prev.organization AND sa.detail_category = sa_prev.detail_category
+    ON dm.year_month = sa_prev.year_month AND dm.organization = sa_prev.organization AND dm.detail_category = sa_prev.detail_category
   LEFT JOIN tokyo_target st_sales
-    ON sa.year_month = st_sales.year_month AND sa.organization = st_sales.organization AND sa.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales'
+    ON dm.year_month = st_sales.year_month AND dm.organization = st_sales.organization AND dm.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales'
   LEFT JOIN tokyo_target st_gp
-    ON sa.year_month = st_gp.year_month AND sa.organization = st_gp.organization AND sa.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit'
+    ON dm.year_month = st_gp.year_month AND dm.organization = st_gp.organization AND dm.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
-    ON sa.year_month = oet.year_month AND sa.organization = oet.organization AND sa.detail_category = oet.detail_category AND oet.branch = '東京支店'
+    ON dm.year_month = oet.year_month AND dm.organization = oet.organization AND dm.detail_category = oet.detail_category AND oet.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
-    ON sa.year_month = oit.year_month AND sa.organization = oit.organization AND sa.detail_category = oit.detail_category AND oit.branch = '東京支店'
+    ON dm.year_month = oit.year_month AND dm.organization = oit.organization AND dm.detail_category = oit.detail_category AND oit.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
-    ON sa.year_month = rpt.year_month AND sa.organization = rpt.organization AND sa.detail_category = rpt.detail_category AND rpt.branch = '東京支店'
+    ON dm.year_month = rpt.year_month AND dm.organization = rpt.organization AND dm.detail_category = rpt.detail_category AND rpt.branch = '東京支店'
 )
 
 ,tokyo_aggregated AS (
@@ -317,12 +328,23 @@ tokyo_consolidated AS (
 -- ============================================================
 -- 長崎支店の集計処理
 -- ============================================================
+-- 日付マスター: 実績と目標の両方から日付×組織×detail_categoryの組み合わせを収集
+,nagasaki_date_master AS (
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+  WHERE branch = '長崎支店'
+  UNION DISTINCT
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+  WHERE branch = '長崎支店'
+)
+
 ,nagasaki_aggregated AS (
   -- 詳細レベル（個人・部門レベル）
   SELECT
-    sa.year_month,
-    sa.organization,
-    sa.detail_category,
+    dm.year_month,
+    dm.organization,
+    dm.detail_category,
     sa.sales_amount AS sales_actual,
     st_sales.target_amount AS sales_target,
     sap.sales_amount AS sales_prev_year,
@@ -353,31 +375,32 @@ tokyo_consolidated AS (
       - COALESCE(hoe.head_office_expense, 0)
     ) AS recurring_profit_actual,
     rpt.target_amount AS recurring_profit_target
-  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
+  FROM nagasaki_date_master dm
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
+    ON dm.year_month = sa.year_month AND dm.organization = sa.organization AND dm.detail_category = sa.detail_category AND sa.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` sap
-    ON sa.year_month = sap.year_month AND sa.organization = sap.organization AND sa.detail_category = sap.detail_category AND sap.branch = '長崎支店'
+    ON dm.year_month = sap.year_month AND dm.organization = sap.organization AND dm.detail_category = sap.detail_category AND sap.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
-    ON sa.year_month = st_sales.year_month AND sa.organization = st_sales.organization AND sa.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales' AND st_sales.branch = '長崎支店'
+    ON dm.year_month = st_sales.year_month AND dm.organization = st_sales.organization AND dm.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales' AND st_sales.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
-    ON sa.year_month = st_gp.year_month AND sa.organization = st_gp.organization AND sa.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '長崎支店'
+    ON dm.year_month = st_gp.year_month AND dm.organization = st_gp.organization AND dm.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
-    ON sa.year_month = oe.year_month AND sa.detail_category = oe.detail_category AND oe.branch = '長崎支店'
+    ON dm.year_month = oe.year_month AND dm.detail_category = oe.detail_category AND oe.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-    ON sa.year_month = noi.year_month AND sa.detail_category = noi.detail_category AND noi.branch = '長崎支店'
+    ON dm.year_month = noi.year_month AND dm.detail_category = noi.detail_category AND noi.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_nagasaki` noe
-    ON sa.year_month = noe.year_month AND sa.detail_category = noe.detail_category
+    ON dm.year_month = noe.year_month AND dm.detail_category = noe.detail_category
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
-    ON sa.year_month = ml.year_month AND sa.detail_category = ml.detail_category AND ml.branch = '長崎支店'
+    ON dm.year_month = ml.year_month AND dm.detail_category = ml.detail_category AND ml.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` hoe
-    ON sa.year_month = hoe.year_month AND sa.detail_category = hoe.detail_category AND hoe.branch = '長崎支店'
+    ON dm.year_month = hoe.year_month AND dm.detail_category = hoe.detail_category AND hoe.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
-    ON sa.year_month = oet.year_month AND sa.organization = oet.organization AND sa.detail_category = oet.detail_category AND oet.branch = '長崎支店'
+    ON dm.year_month = oet.year_month AND dm.organization = oet.organization AND dm.detail_category = oet.detail_category AND oet.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
-    ON sa.year_month = oit.year_month AND sa.organization = oit.organization AND sa.detail_category = oit.detail_category AND oit.branch = '長崎支店'
+    ON dm.year_month = oit.year_month AND dm.organization = oit.organization AND dm.detail_category = oit.detail_category AND oit.branch = '長崎支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
-    ON sa.year_month = rpt.year_month AND sa.organization = rpt.organization AND sa.detail_category = rpt.detail_category AND rpt.branch = '長崎支店'
-  WHERE sa.branch = '長崎支店'
-    AND sa.detail_category NOT LIKE '%計'
+    ON dm.year_month = rpt.year_month AND dm.organization = rpt.organization AND dm.detail_category = rpt.detail_category AND rpt.branch = '長崎支店'
+  WHERE dm.detail_category NOT LIKE '%計'
 
   UNION ALL
 
@@ -708,12 +731,23 @@ tokyo_consolidated AS (
 -- ============================================================
 -- 福岡支店の集計処理
 -- ============================================================
+-- 日付マスター: 実績と目標の両方から日付×組織×detail_categoryの組み合わせを収集
+,fukuoka_date_master AS (
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual`
+  WHERE branch = '福岡支店'
+  UNION DISTINCT
+  SELECT DISTINCT year_month, organization, detail_category
+  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target`
+  WHERE branch = '福岡支店'
+)
+
 ,fukuoka_aggregated AS (
   -- 詳細レベル（部門レベル）
   SELECT
-    sa.year_month,
-    sa.organization,
-    sa.detail_category,
+    dm.year_month,
+    dm.organization,
+    dm.detail_category,
     sa.sales_amount AS sales_actual,
     st_sales.target_amount AS sales_target,
     sap.sales_amount AS sales_prev_year,
@@ -744,31 +778,32 @@ tokyo_consolidated AS (
       - COALESCE(hoe.head_office_expense, 0)
     ) AS recurring_profit_actual,
     rpt.target_amount AS recurring_profit_target
-  FROM `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
+  FROM fukuoka_date_master dm
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual` sa
+    ON dm.year_month = sa.year_month AND dm.organization = sa.organization AND dm.detail_category = sa.detail_category AND sa.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_actual_prev_year` sap
-    ON sa.year_month = sap.year_month AND sa.organization = sap.organization AND sa.detail_category = sap.detail_category AND sap.branch = '福岡支店'
+    ON dm.year_month = sap.year_month AND dm.organization = sap.organization AND dm.detail_category = sap.detail_category AND sap.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
-    ON sa.year_month = st_sales.year_month AND sa.organization = st_sales.organization AND sa.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales' AND st_sales.branch = '福岡支店'
+    ON dm.year_month = st_sales.year_month AND dm.organization = st_sales.organization AND dm.detail_category = st_sales.detail_category AND st_sales.metric_type = 'sales' AND st_sales.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
-    ON sa.year_month = st_gp.year_month AND sa.organization = st_gp.organization AND sa.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '福岡支店'
+    ON dm.year_month = st_gp.year_month AND dm.organization = st_gp.organization AND dm.detail_category = st_gp.detail_category AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses` oe
-    ON sa.year_month = oe.year_month AND sa.detail_category = oe.detail_category AND oe.branch = '福岡支店'
+    ON dm.year_month = oe.year_month AND dm.detail_category = oe.detail_category AND oe.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_income` noi
-    ON sa.year_month = noi.year_month AND sa.detail_category = noi.detail_category AND noi.branch = '福岡支店'
+    ON dm.year_month = noi.year_month AND dm.detail_category = noi.detail_category AND noi.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_fukuoka` noe
-    ON sa.year_month = noe.year_month AND sa.detail_category = noe.detail_category
+    ON dm.year_month = noe.year_month AND dm.detail_category = noe.detail_category
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.miscellaneous_loss` ml
-    ON sa.year_month = ml.year_month AND sa.detail_category = ml.detail_category AND ml.branch = '福岡支店'
+    ON dm.year_month = ml.year_month AND dm.detail_category = ml.detail_category AND ml.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.head_office_expenses` hoe
-    ON sa.year_month = hoe.year_month AND sa.detail_category = hoe.detail_category
+    ON dm.year_month = hoe.year_month AND dm.detail_category = hoe.detail_category
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
-    ON sa.year_month = oet.year_month AND sa.organization = oet.organization AND sa.detail_category = oet.detail_category AND oet.branch = '福岡支店'
+    ON dm.year_month = oet.year_month AND dm.organization = oet.organization AND dm.detail_category = oet.detail_category AND oet.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
-    ON sa.year_month = oit.year_month AND sa.organization = oit.organization AND sa.detail_category = oit.detail_category AND oit.branch = '福岡支店'
+    ON dm.year_month = oit.year_month AND dm.organization = oit.organization AND dm.detail_category = oit.detail_category AND oit.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
-    ON sa.year_month = rpt.year_month AND sa.organization = rpt.organization AND sa.detail_category = rpt.detail_category AND rpt.branch = '福岡支店'
-  WHERE sa.branch = '福岡支店'
-    AND sa.detail_category NOT LIKE '%計'
+    ON dm.year_month = rpt.year_month AND dm.organization = rpt.organization AND dm.detail_category = rpt.detail_category AND rpt.branch = '福岡支店'
+  WHERE dm.detail_category NOT LIKE '%計'
 
   UNION ALL
 
