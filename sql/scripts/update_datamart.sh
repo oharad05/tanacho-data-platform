@@ -141,7 +141,7 @@ fi
 # 6. 累計DataMart作成
 # ============================================================
 echo ""
-echo "6/6: 累計DataMartを作成中..."
+echo "6/7: 累計DataMartを作成中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
@@ -151,6 +151,23 @@ if [ $? -eq 0 ]; then
   echo "✓ 累計DataMart作成完了"
 else
   echo "✗ 累計DataMart作成失敗"
+  exit 1
+fi
+
+# ============================================================
+# 7. 累計表示用DataMart作成
+# ============================================================
+echo ""
+echo "7/7: 累計表示用DataMartを作成中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/cumulative_management_documents_all_period_all_for_display.sql"
+
+if [ $? -eq 0 ]; then
+  echo "✓ 累計表示用DataMart作成完了"
+else
+  echo "✗ 累計表示用DataMart作成失敗"
   exit 1
 fi
 
@@ -164,6 +181,7 @@ echo "  - ${DATASET_DM}.management_documents_all_period_fukuoka (福岡支店)"
 echo "  - ${DATASET_DM}.management_documents_all_period_all (統合)"
 echo "  - ${DATASET_DM}.management_documents_all_period_all_for_display (表示用)"
 echo "  - ${DATASET_DM}.cumulative_management_documents_all_period_all (累計)"
+echo "  - ${DATASET_DM}.cumulative_management_documents_all_period_all_for_display (累計表示用)"
 echo ""
 echo "Looker Studioで最新データを確認できます"
 echo "========================================="
