@@ -156,9 +156,9 @@ tokyo_consolidated AS (
 )
 
 ,tokyo_aggregated AS (
-  -- 詳細レベル（山本（改装）は別途経費データ付きで出力するため除外）
+  -- 詳細レベル（集計カテゴリは別途UNION ALLで作成するため除外）
   SELECT * FROM tokyo_consolidated
-  WHERE detail_category != '山本（改装）'
+  WHERE detail_category NOT IN ('山本（改装）', 'ガラス工事計', '工事営業部計', '硝子建材営業部計', '東京支店計')
 
   UNION ALL
 

@@ -208,7 +208,7 @@ fukuoka_direct_expenses AS (
       END
     ) AS fukuhoku_direct,
 
-    -- 業務部(operations_department)の費用(案分対象)
+    -- 業務部(operations)の費用(案分対象) ※福岡支店はoperationsカラムを使用
     SUM(
       CASE
         WHEN code IN (
@@ -216,7 +216,7 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN operations_department
+        ) THEN operations
         ELSE 0
       END
     ) AS operations_total
@@ -251,7 +251,7 @@ fukuoka_allocated AS (
     d.construction_direct + (d.operations_total * COALESCE(r_construction.ratio, 0)) AS construction_total,
     d.glass_resin_direct + (d.operations_total * COALESCE(r_glass.ratio, 0)) AS glass_resin_total,
     d.gs_direct + (d.operations_total * COALESCE(r_gs.ratio, 0)) AS gs_total,
-    d.fukuhoku_direct AS fukuhoku_total  -- 福北センターは案分なし
+    d.fukuhoku_direct + (d.operations_total * COALESCE(r_fukuhoku.ratio, 0)) AS fukuhoku_total  -- GSセンターと同様のロジック
   FROM fukuoka_direct_expenses d
   LEFT JOIN fukuoka_allocation_ratios r_construction
     ON d.year_month = r_construction.year_month
@@ -262,6 +262,9 @@ fukuoka_allocated AS (
   LEFT JOIN fukuoka_allocation_ratios r_gs
     ON d.year_month = r_gs.year_month
     AND r_gs.department = 'GSセンター'
+  LEFT JOIN fukuoka_allocation_ratios r_fukuhoku
+    ON d.year_month = r_fukuhoku.year_month
+    AND r_fukuhoku.department = '福北センター'
 ),
 
 fukuoka_unpivoted AS (

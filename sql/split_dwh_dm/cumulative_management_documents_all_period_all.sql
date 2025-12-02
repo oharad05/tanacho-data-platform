@@ -5,7 +5,7 @@ DM: 累計経営資料（全支店統合版）- Looker Studio用
 目的: 期首（9月）からの累計値を計算し、グラフ可視化用のデータソースを作成
 データソース: management_documents_all_period_all
 対象支店: 東京支店、長崎支店、福岡支店
-対象部門: main_display_flag=1 のもの
+対象部門: 全部門（main_display_flagに関わらず）
 
 出力スキーマ:
   - date: 対象年月（DATE型）
@@ -68,7 +68,6 @@ base_data AS (
     display_value,
     main_display_flag
   FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_all`
-  WHERE main_display_flag = 1
 ),
 
 -- ============================================================
@@ -84,23 +83,33 @@ amount_data AS (
     fiscal_month,
     main_category,
     main_category_sort_order,
-    -- secondary_categoryの表示名を簡略化
+    -- secondary_categoryの表示名（千円単位を明示）
     CASE secondary_category
-      WHEN '本年実績(千円)' THEN '本年実績'
-      WHEN '前年実績(千円)' THEN '前年実績'
-      WHEN '本年目標(千円)' THEN '本年目標'
-      WHEN '累積本年実績(千円)' THEN '累積本年実績'
-      WHEN '累積本年目標(千円)' THEN '累積本年目標'
+      WHEN '本年実績(千円)' THEN '本年実績(千円)'
+      WHEN '前年実績(千円)' THEN '前年実績(千円)'
+      WHEN '本年目標(千円)' THEN '本年目標(千円)'
+      WHEN '累積本年実績(千円)' THEN '累積本年実績(千円)'
+      WHEN '累積本年目標(千円)' THEN '累積本年目標(千円)'
       ELSE secondary_category
     END AS secondary_category,
     -- secondary_category_sort_order
-    CASE secondary_category
-      WHEN '本年実績(千円)' THEN 1
-      WHEN '前年実績(千円)' THEN 2
-      WHEN '本年目標(千円)' THEN 3
-      WHEN '累積本年実績(千円)' THEN 4
-      WHEN '累積本年目標(千円)' THEN 5
-      ELSE 99
+    -- 経常利益は特別な順序: 本年目標→本年実績→累積本年目標→累積本年実績
+    CASE
+      WHEN main_category = '経常利益' THEN
+        CASE secondary_category
+          WHEN '本年目標(千円)' THEN 1
+          WHEN '本年実績(千円)' THEN 2
+          WHEN '累積本年目標(千円)' THEN 3
+          WHEN '累積本年実績(千円)' THEN 4
+          ELSE 99
+        END
+      ELSE
+        CASE secondary_category
+          WHEN '本年実績(千円)' THEN 1
+          WHEN '前年実績(千円)' THEN 2
+          WHEN '本年目標(千円)' THEN 3
+          ELSE 99
+        END
     END AS secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -175,7 +184,7 @@ gross_profit_margin_base AS (
     AND c1.secondary_category = c2.secondary_category
   WHERE c1.main_category = '売上高'
     AND c2.main_category = '売上総利益'
-    AND c1.secondary_category IN ('本年実績', '前年実績', '本年目標')
+    AND c1.secondary_category IN ('本年実績(千円)', '前年実績(千円)', '本年目標(千円)')
 ),
 
 -- ============================================================
@@ -190,7 +199,12 @@ gross_profit_margin_data AS (
     fiscal_month,
     '売上総利益率' AS main_category,
     3 AS main_category_sort_order,  -- management_documents_all_period_allと同じ
-    secondary_category,
+    -- 売上総利益率のsecondary_categoryは(%)を付ける
+    CASE secondary_category
+      WHEN '本年実績(千円)' THEN '本年実績(%)'
+      WHEN '前年実績(千円)' THEN '前年実績(%)'
+      WHEN '本年目標(千円)' THEN '本年目標(%)'
+    END AS secondary_category,
     secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -199,8 +213,8 @@ gross_profit_margin_data AS (
     main_display_flag,
     -- 当月の売上総利益率は計算しない（累計のみ意味がある）
     NULL AS monthly_value,
-    -- 累計売上総利益率 = 累計売上総利益 ÷ 累計売上高 × 100
-    SAFE_DIVIDE(cumulative_gross_profit, cumulative_sales) * 100 AS cumulative_value
+    -- 累計売上総利益率 = 累計売上総利益 ÷ 累計売上高
+    SAFE_DIVIDE(cumulative_gross_profit, cumulative_sales) AS cumulative_value
   FROM gross_profit_margin_base
 ),
 
@@ -230,8 +244,8 @@ yoy_ratio_base AS (
     AND c1.main_department = c2.main_department
     AND c1.secondary_department = c2.secondary_department
     AND c1.main_category = c2.main_category
-  WHERE c1.secondary_category = '本年実績'
-    AND c2.secondary_category = '前年実績'
+  WHERE c1.secondary_category = '本年実績(千円)'
+    AND c2.secondary_category = '前年実績(千円)'
     AND c1.main_category NOT IN ('売上総利益率')
 ),
 
@@ -247,7 +261,7 @@ yoy_ratio_data AS (
     fiscal_month,
     main_category,
     main_category_sort_order,
-    '前年比' AS secondary_category,
+    '前年比(%)' AS secondary_category,
     4 AS secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -255,9 +269,10 @@ yoy_ratio_data AS (
     secondary_department_sort_order,
     main_display_flag,
     NULL AS monthly_value,
-    -- 累計前年比 = 累計本年実績 ÷ 累計前年実績 × 100
-    SAFE_DIVIDE(cumulative_current_year, cumulative_prev_year) * 100 AS cumulative_value
+    -- 累計前年比 = 累計本年実績 ÷ 累計前年実績
+    SAFE_DIVIDE(cumulative_current_year, cumulative_prev_year) AS cumulative_value
   FROM yoy_ratio_base
+  WHERE main_category != '経常利益'
 ),
 
 -- ============================================================
@@ -286,13 +301,13 @@ target_ratio_base AS (
     AND c1.main_department = c2.main_department
     AND c1.secondary_department = c2.secondary_department
     AND c1.main_category = c2.main_category
-  WHERE c1.secondary_category = '本年実績'
-    AND c2.secondary_category = '本年目標'
+  WHERE c1.secondary_category = '本年実績(千円)'
+    AND c2.secondary_category = '本年目標(千円)'
     AND c1.main_category NOT IN ('売上総利益率')
 ),
 
 -- ============================================================
--- 目標比データの生成
+-- 目標比データの生成（経常利益は除外）
 -- ============================================================
 target_ratio_data AS (
   SELECT
@@ -303,7 +318,7 @@ target_ratio_data AS (
     fiscal_month,
     main_category,
     main_category_sort_order,
-    '目標比' AS secondary_category,
+    '目標比(%)' AS secondary_category,
     5 AS secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -311,9 +326,10 @@ target_ratio_data AS (
     secondary_department_sort_order,
     main_display_flag,
     NULL AS monthly_value,
-    -- 累計目標比 = 累計本年実績 ÷ 累計本年目標 × 100
-    SAFE_DIVIDE(cumulative_current_year, cumulative_target) * 100 AS cumulative_value
+    -- 累計目標比 = 累計本年実績 ÷ 累計本年目標
+    SAFE_DIVIDE(cumulative_current_year, cumulative_target) AS cumulative_value
   FROM target_ratio_base
+  WHERE main_category != '経常利益'
 ),
 
 -- ============================================================
@@ -339,13 +355,13 @@ gross_margin_ratio_base AS (
     ON g1.date = g2.date
     AND g1.main_department = g2.main_department
     AND g1.secondary_department = g2.secondary_department
-    AND g2.secondary_category = '前年実績'
+    AND g2.secondary_category = '前年実績(%)'
   LEFT JOIN gross_profit_margin_data g3
     ON g1.date = g3.date
     AND g1.main_department = g3.main_department
     AND g1.secondary_department = g3.secondary_department
-    AND g3.secondary_category = '本年目標'
-  WHERE g1.secondary_category = '本年実績'
+    AND g3.secondary_category = '本年目標(%)'
+  WHERE g1.secondary_category = '本年実績(%)'
 ),
 
 -- ============================================================
@@ -360,7 +376,7 @@ gross_margin_yoy_data AS (
     fiscal_month,
     '売上総利益率' AS main_category,
     3 AS main_category_sort_order,
-    '前年比' AS secondary_category,
+    '前年比(%)' AS secondary_category,
     4 AS secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -368,8 +384,8 @@ gross_margin_yoy_data AS (
     secondary_department_sort_order,
     main_display_flag,
     NULL AS monthly_value,
-    -- 売上総利益率の前年比 = 本年売上総利益率 ÷ 前年売上総利益率 × 100
-    SAFE_DIVIDE(current_year_margin, prev_year_margin) * 100 AS cumulative_value
+    -- 売上総利益率の前年比 = 本年売上総利益率 ÷ 前年売上総利益率
+    SAFE_DIVIDE(current_year_margin, prev_year_margin) AS cumulative_value
   FROM gross_margin_ratio_base
   WHERE prev_year_margin IS NOT NULL
 ),
@@ -386,7 +402,7 @@ gross_margin_target_data AS (
     fiscal_month,
     '売上総利益率' AS main_category,
     3 AS main_category_sort_order,
-    '目標比' AS secondary_category,
+    '目標比(%)' AS secondary_category,
     5 AS secondary_category_sort_order,
     main_department,
     main_department_sort_order,
@@ -394,8 +410,8 @@ gross_margin_target_data AS (
     secondary_department_sort_order,
     main_display_flag,
     NULL AS monthly_value,
-    -- 売上総利益率の目標比 = 本年売上総利益率 ÷ 目標売上総利益率 × 100
-    SAFE_DIVIDE(current_year_margin, target_margin) * 100 AS cumulative_value
+    -- 売上総利益率の目標比 = 本年売上総利益率 ÷ 目標売上総利益率
+    SAFE_DIVIDE(current_year_margin, target_margin) AS cumulative_value
   FROM gross_margin_ratio_base
   WHERE target_margin IS NOT NULL
 )

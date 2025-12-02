@@ -46,11 +46,11 @@ target_months AS (
 -- 【工事部計】の計算
 -- ============================================================
 
--- ① 売掛金（営業所コード=030, 034）
+-- ① 売掛金（営業所コード=030, 034）※current_month_accounts_receivableを使用
 construction_receivables AS (
   SELECT
     tm.year_month,
-    SUM(bb.current_month_sales_balance) AS receivables_amount
+    SUM(bb.current_month_accounts_receivable) AS receivables_amount
   FROM target_months tm
   INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
     ON bb.sales_month = tm.reference_month
@@ -181,11 +181,11 @@ construction_interest AS (
 -- 【硝子樹脂計】の計算
 -- ============================================================
 
--- ① 売掛金（営業所コード=031, 032）
+-- ① 売掛金（営業所コード=031, 032）※current_month_accounts_receivableを使用
 glass_receivables AS (
   SELECT
     tm.year_month,
-    SUM(bb.current_month_sales_balance) AS receivables_amount
+    SUM(bb.current_month_accounts_receivable) AS receivables_amount
   FROM target_months tm
   INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
     ON bb.sales_month = tm.reference_month
@@ -193,7 +193,7 @@ glass_receivables AS (
   GROUP BY tm.year_month
 ),
 
--- ② 売掛金利率（売掛金・工事・硝子樹脂建材）
+-- ② 売掛金利率（売掛金・硝子樹脂建材）
 glass_receivables_rate AS (
   SELECT
     year_month,
@@ -201,7 +201,7 @@ glass_receivables_rate AS (
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '福岡支店'
     AND category = '社内利息（A）'
-    AND breakdown = '売掛金・工事・硝子樹脂建材'
+    AND breakdown = '売掛金・硝子樹脂建材'
 ),
 
 -- ③ 未落手形（営業所コード=031, 032）
