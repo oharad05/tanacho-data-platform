@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
 proceed/ → BigQuery 連携スクリプト
-CSVファイルをBigQueryテーブルにロード（月次APPENDモード）
+CSVファイルをBigQueryテーブルにロード
+
+デフォルト動作:
+- 2024/9以降のデータを全て削除
+- GCSのproceed/フォルダにある全年月のCSVをロード
+
 テーブルとカラムの説明も自動設定
 """
 
@@ -20,6 +25,10 @@ DATASET_ID = "corporate_data"
 LANDING_BUCKET = "data-platform-landing-prod"
 MAPPING_FILE = "config/mapping/excel_mapping.csv"  # Note: このファイルは現在使用されていない可能性があります
 COLUMNS_PATH = "config/columns"
+
+# 期首（データ開始日）
+FISCAL_START_YYYYMM = "202409"  # 2024年9月
+FISCAL_START_DATE = "2024-09-01"
 
 # テーブル定義とパーティション列のマッピング
 TABLE_CONFIG = {
@@ -77,6 +86,62 @@ def create_bigquery_client():
     """BigQueryクライアントの作成"""
     client = bigquery.Client(project=PROJECT_ID)
     return client
+
+def get_available_months_from_gcs() -> list:
+    """GCSのproceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(LANDING_BUCKET)
+    blobs = bucket.list_blobs(prefix="proceed/")
+
+    months = set()
+    for blob in blobs:
+        # proceed/202409/xxx.csv のような形式からyyyymmを抽出
+        parts = blob.name.split("/")
+        if len(parts) >= 2 and parts[1].isdigit() and len(parts[1]) == 6:
+            yyyymm = parts[1]
+            # 2024/9以降のみ対象
+            if yyyymm >= FISCAL_START_YYYYMM:
+                months.add(yyyymm)
+
+    return sorted(list(months))
+
+def delete_all_data_since_fiscal_start(
+    client: bigquery.Client,
+    table_name: str
+) -> bool:
+    """
+    2024年9月以降のデータを全て削除（冪等性保証）
+
+    Args:
+        client: BigQueryクライアント
+        table_name: テーブル名
+
+    Returns:
+        成功時True
+    """
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+    partition_field = TABLE_CONFIG[table_name]["partition_field"]
+
+    delete_query = f"""
+    DELETE FROM `{table_id}`
+    WHERE {partition_field} >= '{FISCAL_START_DATE}'
+    """
+
+    try:
+        print(f"   🗑️  既存データ削除中: {FISCAL_START_DATE}以降")
+        query_job = client.query(delete_query)
+        query_job.result()
+
+        if query_job.num_dml_affected_rows:
+            print(f"      削除: {query_job.num_dml_affected_rows} 行")
+        else:
+            print(f"      削除対象なし")
+
+        return True
+
+    except Exception as e:
+        print(f"   ⚠️  削除処理スキップ: {e}")
+        return True
 
 def load_table_name_mapping() -> Dict[str, str]:
     """
@@ -340,68 +405,76 @@ def delete_partition_data_by_csv(
         traceback.print_exc()
         return True  # 削除失敗してもロードは続行
 
-def process_all_tables(yyyymm: str, replace_existing: bool = True):
+def process_all_tables(yyyymm: str = None):
     """
     全テーブルのBigQueryロード処理
-    
+
+    デフォルト動作:
+    - 2024/9以降のデータを全て削除
+    - GCSのproceed/フォルダにある全年月のCSVをロード
+
     Args:
-        yyyymm: 対象年月（例: 202509）
-        replace_existing: 既存データを削除してから追加
+        yyyymm: 対象年月（省略時は2024/9以降の全年月）
     """
+    # 対象年月リストを取得
+    target_months = get_available_months_from_gcs()
+
     print("=" * 60)
     print(f"proceed/ → BigQuery ロード処理")
-    print(f"対象年月: {yyyymm}")
+    print(f"対象年月: {', '.join(target_months)}")
     print(f"プロジェクト: {PROJECT_ID}")
     print(f"データセット: {DATASET_ID}")
-    print(f"モード: {'REPLACE' if replace_existing else 'APPEND'}")
+    print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
     print("=" * 60)
-    
+
     # BigQueryクライアント作成
     client = create_bigquery_client()
-    
+    storage_client = storage.Client()
+
     success_count = 0
     error_count = 0
-    
+
     # 各テーブルを処理
     for table_name in TABLE_CONFIG.keys():
         print(f"\n📊 処理中: {table_name}")
-        
+
         # テーブル存在確認
         if not check_table_exists(client, table_name):
             print(f"   ❌ テーブルが存在しません: {table_name}")
             error_count += 1
             continue
-        
-        # GCS URI
-        gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{yyyymm}/{table_name}.csv"
-        
-        # CSVファイルの存在確認
-        storage_client = storage.Client()
+
+        # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
+        delete_all_data_since_fiscal_start(client, table_name)
+
+        # 全年月のCSVをロード
+        table_success = True
         bucket = storage_client.bucket(LANDING_BUCKET)
-        blob_name = f"proceed/{yyyymm}/{table_name}.csv"
-        blob = bucket.blob(blob_name)
-        
-        if not blob.exists():
-            print(f"   ⚠️  CSVファイルが存在しません: {gcs_uri}")
-            error_count += 1
-            continue
-        
-        # 既存データの削除（オプション）
-        if replace_existing:
-            delete_partition_data_by_csv(client, table_name, gcs_uri)
-        
-        # BigQueryへロード
-        if load_csv_to_bigquery(client, table_name, gcs_uri, yyyymm):
+
+        for month in target_months:
+            gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{month}/{table_name}.csv"
+            blob_name = f"proceed/{month}/{table_name}.csv"
+            blob = bucket.blob(blob_name)
+
+            if not blob.exists():
+                print(f"   ⚠️  CSVファイルが存在しません: {gcs_uri}")
+                continue
+
+            # BigQueryへロード
+            if not load_csv_to_bigquery(client, table_name, gcs_uri, month):
+                table_success = False
+
+        if table_success:
             # テーブルとカラムの説明を更新
             update_table_and_column_descriptions(client, table_name)
             success_count += 1
         else:
             error_count += 1
-    
+
     print("\n" + "=" * 60)
     print(f"処理完了: 成功 {success_count} / エラー {error_count}")
     print("=" * 60)
-    
+
     # 統計情報の表示
     if success_count > 0:
         print("\n📈 テーブル統計:")
@@ -449,15 +522,63 @@ def verify_load(table_name: str, yyyymm: str):
 
 if __name__ == "__main__":
     # コマンドライン引数
-    if len(sys.argv) < 2:
+    # デフォルト: 2024/9以降の全データをREPLACEモードでロード
+    # 引数なしで実行すると、GCSのproceed/にある全年月が対象
+
+    if len(sys.argv) == 1:
+        # 引数なし: デフォルト動作（2024/9以降の全データをREPLACE）
+        print("引数なし: デフォルトモード（2024/9以降の全データをREPLACE）")
+        process_all_tables()
+    elif sys.argv[1] == "--help" or sys.argv[1] == "-h":
         print("使用方法:")
-        print("  python load_to_bigquery.py YYYYMM [--replace]")
-        print("  例: python load_to_bigquery.py 202509")
-        print("  例: python load_to_bigquery.py 202509 --replace")
-        sys.exit(1)
-    
-    yyyymm = sys.argv[1]
-    replace_mode = "--replace" in sys.argv
-    
-    # 実行
-    process_all_tables(yyyymm, replace_existing=replace_mode)
+        print("  python load_to_bigquery.py              # デフォルト: 2024/9以降の全データをREPLACE")
+        print("  python load_to_bigquery.py YYYYMM       # 特定月のみロード（既存データに追加）")
+        print("")
+        print("デフォルト動作:")
+        print("  - 2024/9以降のデータを全て削除")
+        print("  - GCSのproceed/フォルダにある全年月のCSVをロード")
+        sys.exit(0)
+    else:
+        # 特定年月のみロード（追加モード）
+        yyyymm = sys.argv[1]
+        print(f"特定月モード: {yyyymm} のデータをロード（追加）")
+        # 旧動作との互換性のため、特定月指定時は追加モード
+        # process_all_tablesは引数なしで全データREPLACEになっているので、
+        # 特定月だけをロードする場合は個別処理
+        from google.cloud import storage as storage_module
+
+        client = create_bigquery_client()
+        storage_client = storage_module.Client()
+
+        print("=" * 60)
+        print(f"proceed/ → BigQuery ロード処理（特定月）")
+        print(f"対象年月: {yyyymm}")
+        print(f"プロジェクト: {PROJECT_ID}")
+        print(f"データセット: {DATASET_ID}")
+        print("=" * 60)
+
+        for table_name in TABLE_CONFIG.keys():
+            print(f"\n📊 処理中: {table_name}")
+
+            if not check_table_exists(client, table_name):
+                print(f"   ❌ テーブルが存在しません: {table_name}")
+                continue
+
+            gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{yyyymm}/{table_name}.csv"
+            bucket = storage_client.bucket(LANDING_BUCKET)
+            blob = bucket.blob(f"proceed/{yyyymm}/{table_name}.csv")
+
+            if not blob.exists():
+                print(f"   ⚠️  CSVファイルが存在しません: {gcs_uri}")
+                continue
+
+            # 既存の指定月データを削除
+            delete_partition_data(client, table_name, gcs_uri, yyyymm)
+
+            # BigQueryへロード
+            load_csv_to_bigquery(client, table_name, gcs_uri, yyyymm)
+
+            # 説明を更新
+            update_table_and_column_descriptions(client, table_name)
+
+        print("\n処理完了")

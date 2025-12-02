@@ -488,17 +488,17 @@ def update_table_and_column_descriptions(
 def delete_partition_data(
     bq_client: bigquery.Client,
     table_name: str,
-    yyyymm: str
+    yyyymm: str = None  # 未使用（後方互換性のため残す）
 ) -> bool:
-    """指定月のパーティションデータを削除"""
+    """2024年9月以降のパーティションデータを全て削除（冪等性保証）"""
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     partition_field = TABLE_CONFIG[table_name]["partition_field"]
 
-    year = yyyymm[:4]
-    month = yyyymm[4:6]
+    # 期首: 2024年9月1日以降を全て削除
+    start_date = "2024-09-01"
 
     # slip_date や final_billing_sales_date など、月の1日以外の日付が入るフィールドは
-    # FORMAT_DATE で年月を比較する
+    # 日付比較で対応
     tables_with_non_first_day_dates = [
         "ledger_income",
         "ledger_loss",
@@ -508,16 +508,16 @@ def delete_partition_data(
     if table_name in tables_with_non_first_day_dates:
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE FORMAT_DATE('%Y%m', {partition_field}) = '{yyyymm}'
+        WHERE {partition_field} >= '{start_date}'
         """
     else:
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE {partition_field} = '{year}-{month}-01'
+        WHERE {partition_field} >= '{start_date}'
         """
 
     try:
-        print(f"   🗑️  既存データ削除中: {year}-{month}")
+        print(f"   🗑️  既存データ削除中: {start_date}以降")
         query_job = bq_client.query(delete_query)
         query_job.result()
 
@@ -581,6 +581,30 @@ def load_csv_to_bigquery(
     except Exception as e:
         print(f"   ❌ 予期しないエラー: {e}")
         return False
+
+# ============================================================
+# ユーティリティ関数
+# ============================================================
+
+# 期首（データ開始日）
+FISCAL_START_YYYYMM = "202409"  # 2024年9月
+
+def get_available_months_from_gcs(storage_client: storage.Client) -> list:
+    """GCSのproceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
+    bucket = storage_client.bucket(LANDING_BUCKET)
+    blobs = bucket.list_blobs(prefix="proceed/")
+
+    months = set()
+    for blob in blobs:
+        # proceed/202409/xxx.csv のような形式からyyyymmを抽出
+        parts = blob.name.split("/")
+        if len(parts) >= 2 and parts[1].isdigit() and len(parts[1]) == 6:
+            yyyymm = parts[1]
+            # 2024/9以降のみ対象
+            if yyyymm >= FISCAL_START_YYYYMM:
+                months.add(yyyymm)
+
+    return sorted(list(months))
 
 # ============================================================
 # Flask アプリケーション
@@ -651,32 +675,35 @@ def load_endpoint():
 
     リクエスト例:
     {
-        "yyyymm": "202509",
+        "yyyymm": "202509",  # 省略時は2024/9以降の全年月を処理
         "tables": ["sales_target_and_achievements"],
         "replace": true
     }
 
-    注意: 冪等性を保証するため、パーティション削除は常に実行されます。
-    replace=false を指定しても、対象月のデータは削除されてから追加されます。
+    注意: 冪等性を保証するため、2024/9以降のデータは全て削除されてから追加されます。
     """
     try:
         payload = request.get_json(force=True, silent=True) or {}
-        yyyymm = payload.get("yyyymm")
+        yyyymm = payload.get("yyyymm")  # 省略可能
         tables = payload.get("tables", list(TABLE_CONFIG.keys()))
-        # 冪等性を保証するため、デフォルトをTrueに変更
-        replace_existing = payload.get("replace", True)
-
-        if not yyyymm:
-            return jsonify({"error": "yyyymm is required"}), 400
-
-        print("=" * 60)
-        print(f"proceed/ → BigQuery ロード処理")
-        print(f"対象年月: {yyyymm}")
-        print(f"モード: REPLACE（冪等性保証のため常にパーティション削除を実行）")
-        print("=" * 60)
 
         bq_client = bigquery.Client(project=PROJECT_ID)
         storage_client = storage.Client()
+
+        # 対象年月リストを決定
+        if yyyymm:
+            # 特定月が指定された場合でも、2024/9以降の全データを処理
+            target_months = get_available_months_from_gcs(storage_client)
+            print(f"指定月: {yyyymm}（ただし2024/9以降の全データを処理）")
+        else:
+            # 省略時は2024/9以降の全年月
+            target_months = get_available_months_from_gcs(storage_client)
+
+        print("=" * 60)
+        print(f"proceed/ → BigQuery ロード処理")
+        print(f"対象年月: {', '.join(target_months)}")
+        print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
+        print("=" * 60)
 
         success_count = 0
         error_count = 0
@@ -685,11 +712,16 @@ def load_endpoint():
         for table_name in tables:
             print(f"\n📊 処理中: {table_name}")
 
-            # 冪等性を保証するため、常にパーティション削除を実行
-            delete_partition_data(bq_client, table_name, yyyymm)
+            # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
+            delete_partition_data(bq_client, table_name)
 
-            # BigQueryへロード
-            if load_csv_to_bigquery(bq_client, table_name, yyyymm):
+            # 全年月のCSVをロード
+            table_success = True
+            for month in target_months:
+                if not load_csv_to_bigquery(bq_client, table_name, month):
+                    table_success = False
+
+            if table_success:
                 # テーブルとカラムの説明を更新
                 update_table_and_column_descriptions(bq_client, storage_client, table_name)
                 success_count += 1
@@ -704,7 +736,7 @@ def load_endpoint():
 
         return jsonify({
             "status": "completed",
-            "yyyymm": yyyymm,
+            "target_months": target_months,
             "success": success_count,
             "error": error_count,
             "results": results
@@ -727,7 +759,7 @@ def pubsub_endpoint():
         }
     }
 
-    注意: 冪等性を保証するため、パーティション削除は常に実行されます。
+    注意: 冪等性を保証するため、2024/9以降のデータは全て削除されてから追加されます。
     """
     try:
         envelope = request.get_json(force=True, silent=True) or {}
@@ -740,15 +772,13 @@ def pubsub_endpoint():
         payload = json.loads(base64.b64decode(data_b64).decode("utf-8"))
         yyyymm = payload.get("yyyymm")
         tables = payload.get("tables", list(TABLE_CONFIG.keys()))
-        # replace パラメータは後方互換性のために残すが、冪等性保証のため常に削除を実行
-        # replace_existing = payload.get("replace", True)  # 未使用
 
         if not yyyymm:
             return jsonify({"error": "yyyymm is required"}), 400
 
         print(f"[INFO] Pub/Sub triggered: yyyymm={yyyymm}")
 
-        # Transform実行
+        # Transform実行（指定月のみ）
         print("=" * 60)
         print(f"raw/ → proceed/ 変換処理")
         print(f"対象年月: {yyyymm}")
@@ -766,11 +796,13 @@ def pubsub_endpoint():
 
         print(f"変換完了: 成功 {transform_success} / エラー {transform_error}")
 
-        # Load実行
+        # Load実行（2024/9以降の全年月）
+        target_months = get_available_months_from_gcs(storage_client)
+
         print("=" * 60)
         print(f"proceed/ → BigQuery ロード処理")
-        print(f"対象年月: {yyyymm}")
-        print(f"モード: REPLACE（冪等性保証のため常にパーティション削除を実行）")
+        print(f"対象年月: {', '.join(target_months)}")
+        print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
         print("=" * 60)
 
         bq_client = bigquery.Client(project=PROJECT_ID)
@@ -780,10 +812,16 @@ def pubsub_endpoint():
         for table_name in tables:
             print(f"\n📊 処理中: {table_name}")
 
-            # 冪等性を保証するため、常にパーティション削除を実行
-            delete_partition_data(bq_client, table_name, yyyymm)
+            # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
+            delete_partition_data(bq_client, table_name)
 
-            if load_csv_to_bigquery(bq_client, table_name, yyyymm):
+            # 全年月のCSVをロード
+            table_success = True
+            for month in target_months:
+                if not load_csv_to_bigquery(bq_client, table_name, month):
+                    table_success = False
+
+            if table_success:
                 update_table_and_column_descriptions(bq_client, storage_client, table_name)
                 load_success += 1
             else:

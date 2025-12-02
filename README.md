@@ -6,6 +6,253 @@ Google Drive → GCS → BigQuery → Looker Studio のデータパイプライ�
 
 Google Drive上の月次データをGCSに取り込み、BigQueryに連携し、Looker Studioでダッシュボード表示するためのパイプラインです。
 
+---
+
+## データの連携方法
+
+このセクションでは、月次データをLooker Studioに反映するまでの手順を説明します。
+データソースに応じて2つの連携方法があります。
+
+| 連携種別 | データソース | 対象テーブル | 頻度 |
+|---------|-------------|-------------|------|
+| **Drive連携** | Google Drive上のExcelファイル | `corporate_data.*` | 月次 |
+| **スプレッドシート連携** | Google スプレッドシート | `corporate_data.ss_*` | 随時 |
+
+---
+
+### 前提条件
+
+#### 必要なもの
+- **Googleアカウント**: GCPプロジェクトへのアクセス権限が付与されていること
+- **Webブラウザ**: Google Chrome推奨
+
+#### 必要な権限（管理者が事前に付与）
+以下の権限が付与されている必要があります。権限がない場合は管理者に依頼してください。
+
+| 権限 | 用途 |
+|------|------|
+| Cloud Run 起動元 | データ連携処理の実行 |
+| Pub/Sub パブリッシャー | 処理のトリガー送信 |
+| BigQuery データ編集者 | テーブルの更新 |
+| Storage オブジェクト閲覧者 | ファイルの確認 |
+
+---
+
+### Cloud Shell を開く（共通）
+
+全ての連携処理はCloud Shellから実行します。
+
+1. ブラウザで [Google Cloud Console](https://console.cloud.google.com/) にアクセス
+2. 右上の **「プロジェクトを選択」** をクリック
+3. **`data-platform-prod-475201`** を選択
+4. 画面右上の **ターミナルアイコン** をクリック（`>_` のようなアイコン）
+5. 画面下部に黒い画面（Cloud Shell）が表示されます
+6. 以下のコマンドでプロジェクトを設定（初回のみ）:
+   ```bash
+   gcloud config set project data-platform-prod-475201
+   ```
+
+---
+
+## A. Drive連携（月次Excelファイル）
+
+Google Drive上のExcelファイルをBigQueryに連携します。
+
+### 処理フロー
+
+```
+【ステップ1】Google Driveにファイル配置（先方作業）
+     ↓
+【ステップ2】Drive → GCS 同期
+     ↓
+【ステップ3】GCS → BigQuery 連携
+     ↓
+【ステップ4】DWH/DataMart 更新
+     ↓
+【完了】可視化環境に反映
+```
+
+### ステップ1: Google Driveへのファイル配置（先方作業）
+
+お客様が毎月、Google Driveの所定フォルダにExcelファイルを配置します。
+
+- **配置場所**: `02_データソース/{YYYYMM}/` フォルダ
+- **例**: 2025年10月分 → `02_データソース/202510/`
+- **ファイル形式**: `.xlsx`（Excelファイル）
+
+※ この作業はお客様側で行うため、あなたが実行する必要はありません。
+
+### ステップ2: Drive → GCS 同期
+
+以下のコマンドをCloud Shellで実行します。
+`202510` の部分は対象月（YYYYMM形式）に変更してください。
+
+```bash
+gcloud pubsub topics publish drive-monthly \
+  --message='{"yyyymm":"202510"}'
+```
+
+**実行結果の確認**:
+```
+messageIds:
+- '12345678901234567'
+```
+
+**処理時間**: 約1〜2分
+
+### ステップ3: GCS → BigQuery 連携
+
+ステップ2の完了後（約2分待機）、以下を実行します。
+
+```bash
+gcloud pubsub topics publish transform-trigger \
+  --message='{"yyyymm":"202510"}'
+```
+
+**補足**: このステップでは以下の処理が実行されます:
+- Excel → CSV変換（raw/ → proceed/）
+- **2024年9月以降の全データを削除**
+- **全年月のCSVをBigQueryにロード**
+
+これにより、何度実行しても同じ結果が得られます（冪等性保証）。
+
+**処理時間**: 約2〜3分
+
+### ステップ4: DWH/DataMart 更新
+
+ステップ3の完了後（約3分待機）、以下を実行します。
+
+```bash
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --wait
+```
+
+**実行中の表示**:
+```
+Creating execution...
+Provisioning resources...done
+Starting execution...done
+Running execution...
+```
+
+**完了時の表示**:
+```
+Done.
+Execution [dwh-datamart-update-xxxxx] has successfully completed.
+```
+
+**処理時間**: 約3〜5分
+
+### コマンドまとめ（Drive連携）
+
+```bash
+# プロジェクト設定（初回のみ）
+gcloud config set project data-platform-prod-475201
+
+# ステップ2: Drive → GCS（※202510を対象月に変更）
+gcloud pubsub topics publish drive-monthly --message='{"yyyymm":"202510"}'
+
+# （約2分待機）
+
+# ステップ3: GCS → BigQuery（※202510を対象月に変更）
+gcloud pubsub topics publish transform-trigger --message='{"yyyymm":"202510"}'
+
+# （約3分待機）
+
+# ステップ4: DWH/DataMart更新
+gcloud run jobs execute dwh-datamart-update --region asia-northeast1 --wait
+```
+
+---
+
+## B. スプレッドシート連携
+
+Google スプレッドシートのデータをBigQueryに連携します。
+`ss_`プレフィックスのテーブル（`ss_gs_sales_profit`、`ss_inventory_advance_tokyo`など）が対象です。
+
+### 処理フロー
+
+```
+【実行】スプレッドシート同期コマンド
+     ↓
+【完了】BigQuery ss_* テーブルに反映
+```
+
+### 実行コマンド
+
+以下のコマンドをCloud Shellで実行します。
+
+```bash
+curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/sync" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json"
+```
+
+**実行結果の確認**:
+```json
+{
+  "success": [
+    {"table": "ss_gs_sales_profit", "rows": 150, "gcs_path": "gs://..."},
+    {"table": "ss_inventory_advance_tokyo", "rows": 80, "gcs_path": "gs://..."}
+  ],
+  "failed": [],
+  "skipped": [],
+  "timestamp": "2025-12-02T12:00:00"
+}
+```
+
+**処理内容**:
+- 全スプレッドシートを取得
+- GCSに保存（`gs://data-platform-landing-prod/spreadsheet/raw/`）
+- BigQueryテーブルを**全件洗い替え**（TRUNCATE + INSERT）
+
+**処理時間**: 約1〜2分
+
+### コマンドまとめ（スプレッドシート連携）
+
+```bash
+# プロジェクト設定（初回のみ）
+gcloud config set project data-platform-prod-475201
+
+# スプレッドシート同期
+curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/sync" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json"
+```
+
+---
+
+## よくあるエラーと対処法
+
+### 「Permission denied」と表示される
+
+権限が不足しています。管理者に以下を依頼してください:
+- Cloud Run 起動元
+- Pub/Sub パブリッシャー
+- BigQuery データ編集者
+
+### 「Project not found」と表示される
+
+プロジェクトが正しく設定されていません。以下を実行してください:
+```bash
+gcloud config set project data-platform-prod-475201
+```
+
+### 「Execution failed」と表示される
+
+前のステップの処理が完了する前に次のステップを実行した可能性があります。
+各ステップの間に2〜3分の待機時間を設けてから再実行してください。
+
+### curlコマンドで「401 Unauthorized」と表示される
+
+認証トークンの取得に失敗しています。以下を確認してください:
+1. Cloud Shellで実行しているか確認
+2. `gcloud auth login` でログインし直す
+3. 再度コマンドを実行
+
+---
+
 ## 用語定義
 
 **重要**: 以下の用語は全てのSQL実装で統一して使用してください。
@@ -93,8 +340,13 @@ Looker Studio (ダッシュボード)
 **Cloud Run Services**:
 - `drive-to-gcs` (asia-northeast1) - run_service/main.py
 - `gcs-to-bq` (asia-northeast1) - gcs_to_bq_service/main.py
+- `spreadsheet-to-bq` (asia-northeast1) - spreadsheet_service/main.py
 
-**Cloud Scheduler**: なし（DWH・DataMart更新は手動実行）
+**Cloud Run Jobs**:
+- `dwh-datamart-update` (asia-northeast1) - dwh_datamart_job/main.py
+  - DWH・DataMartテーブルの更新をGCP上で実行
+
+**Cloud Scheduler**: なし（手動実行）
 
 ## 月次データ更新手順
 
@@ -125,10 +377,38 @@ python load_to_bigquery.py {YYYYMM} --replace
 bq query --use_legacy_sql=false < sql/update_ms_department_category_group_name.sql
 ```
 
-### 4. DWHテーブル更新（手動実行必須）
+### 4. DWH/DataMart更新（GCP実行推奨）
 
+**GCP（Cloud Run Job）で実行する場合**:
+```bash
+# Cloud Shellまたはローカルから実行
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --project=data-platform-prod-475201
+
+# 実行完了を待つ場合
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --project=data-platform-prod-475201 \
+  --wait
+
+# DWHのみ更新する場合
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --project=data-platform-prod-475201 \
+  --update-env-vars UPDATE_TYPE=dwh
+
+# DataMartのみ更新する場合
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --project=data-platform-prod-475201 \
+  --update-env-vars UPDATE_TYPE=datamart
+```
+
+**ローカルで実行する場合**:
 ```bash
 bash sql/scripts/update_dwh.sh
+bash sql/scripts/update_datamart.sh
 ```
 
 または個別実行:
@@ -468,6 +748,80 @@ tanacho-pipeline/
 │
 └── gcs_to_bq_service/              # 既存（GCS→BQ）
     └── ...
+```
+
+## 第三者によるパイプライン実行
+
+### 必要な権限（IAMロール）
+
+第三者がパイプラインを実行するには、以下のIAMロールが必要です:
+
+| ロール | 目的 |
+|--------|------|
+| `roles/run.invoker` | Cloud Run Services/Jobsの実行 |
+| `roles/pubsub.publisher` | Pub/Subメッセージの発行 |
+| `roles/bigquery.dataEditor` | BigQueryテーブルの更新 |
+| `roles/storage.objectViewer` | GCSファイルの閲覧（確認用） |
+
+### 権限付与（管理者が実行）
+
+```bash
+USER_EMAIL="third-party@example.com"
+PROJECT_ID="data-platform-prod-475201"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="user:$USER_EMAIL" \
+  --role="roles/run.invoker"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="user:$USER_EMAIL" \
+  --role="roles/pubsub.publisher"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="user:$USER_EMAIL" \
+  --role="roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="user:$USER_EMAIL" \
+  --role="roles/storage.objectViewer"
+```
+
+### Cloud Shellからの実行手順
+
+**推奨**: GCPコンソールの右上にあるCloud Shellアイコンをクリックして、ブラウザ上でコマンドを実行できます。
+
+```bash
+# 1. プロジェクトを設定
+gcloud config set project data-platform-prod-475201
+
+# 2. Drive → GCS 同期（対象月を指定）
+gcloud pubsub topics publish drive-monthly \
+  --message='{"yyyymm":"202510"}'
+
+# 3. GCS → BigQuery 連携（2の完了後に実行）
+gcloud pubsub topics publish transform-trigger \
+  --message='{"yyyymm":"202510"}'
+
+# 4. DWH/DataMart更新
+gcloud run jobs execute dwh-datamart-update \
+  --region asia-northeast1 \
+  --wait
+```
+
+### Cloud Runサービスを直接呼び出す場合
+
+```bash
+# Drive → GCS
+curl -X POST "https://drive-to-gcs-ly6d7o7r3a-an.a.run.app/sync" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"yyyymm":"202510"}'
+
+# GCS → BigQuery
+curl -X POST "https://gcs-to-bq-ly6d7o7r3a-an.a.run.app/transform" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"yyyymm":"202510"}'
 ```
 
 ## 開発環境
