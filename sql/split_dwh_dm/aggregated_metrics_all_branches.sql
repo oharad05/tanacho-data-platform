@@ -226,10 +226,10 @@ tokyo_consolidated AS (
   -- 工事営業部計
   SELECT
     cm.year_month, cm.organization, CONCAT(cm.organization, '計') AS detail_category,
-    SUM(cm.sales_actual), SUM(cm.sales_target), SUM(cm.sales_prev_year),
-    SUM(cm.gross_profit_actual), SUM(cm.gross_profit_target), SUM(cm.gross_profit_prev_year),
+    SUM(cm.sales_actual), MAX(st_sales.target_amount) AS sales_target, SUM(cm.sales_prev_year),
+    SUM(cm.gross_profit_actual), MAX(st_gp.target_amount) AS gross_profit_target, SUM(cm.gross_profit_prev_year),
     SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)),
-    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)),
+    SAFE_DIVIDE(MAX(st_gp.target_amount), MAX(st_sales.target_amount)),
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)),
     MAX(ed.operating_expense), MAX(oet.target_amount), MAX(ed.operating_expense_prev_year),
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0),
@@ -250,6 +250,10 @@ tokyo_consolidated AS (
     WHERE detail_category IN ('ガラス工事計', '山本（改装）')
     GROUP BY year_month, parent_organization
   ) ed ON cm.year_month = ed.year_month AND cm.organization = ed.parent_organization
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
+    ON cm.year_month = st_sales.year_month AND st_sales.organization = '工事営業部' AND st_sales.detail_category = '工事営業部計' AND st_sales.metric_type = 'sales' AND st_sales.branch = '東京支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
+    ON cm.year_month = st_gp.year_month AND st_gp.organization = '工事営業部' AND st_gp.detail_category = '工事営業部計' AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON cm.year_month = oet.year_month AND oet.organization = '工事営業部' AND oet.detail_category = '工事営業部計' AND oet.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
@@ -257,6 +261,7 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
     ON cm.year_month = rpt.year_month AND rpt.organization = '工事営業部' AND rpt.detail_category = '工事営業部計' AND rpt.branch = '東京支店'
   WHERE cm.organization = '工事営業部'
+    AND cm.detail_category NOT IN ('工事営業部計')
   GROUP BY cm.year_month, cm.organization
 
   UNION ALL
@@ -264,10 +269,10 @@ tokyo_consolidated AS (
   -- 硝子建材営業部計
   SELECT
     cm.year_month, cm.organization, CONCAT(cm.organization, '計') AS detail_category,
-    SUM(cm.sales_actual), SUM(cm.sales_target), SUM(cm.sales_prev_year),
-    SUM(cm.gross_profit_actual), SUM(cm.gross_profit_target), SUM(cm.gross_profit_prev_year),
+    SUM(cm.sales_actual), MAX(st_sales.target_amount) AS sales_target, SUM(cm.sales_prev_year),
+    SUM(cm.gross_profit_actual), MAX(st_gp.target_amount) AS gross_profit_target, SUM(cm.gross_profit_prev_year),
     SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)),
-    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)),
+    SAFE_DIVIDE(MAX(st_gp.target_amount), MAX(st_sales.target_amount)),
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)),
     MAX(ed.operating_expense), MAX(oet.target_amount), MAX(ed.operating_expense_prev_year),
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0),
@@ -279,6 +284,10 @@ tokyo_consolidated AS (
     MAX(rpt.target_amount)
   FROM tokyo_consolidated cm
   LEFT JOIN tokyo_expense_data ed ON cm.year_month = ed.year_month AND cm.organization = ed.parent_organization AND ed.detail_category = '硝子建材営業部'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
+    ON cm.year_month = st_sales.year_month AND st_sales.organization = '硝子建材営業部' AND st_sales.detail_category = '硝子建材営業部計' AND st_sales.metric_type = 'sales' AND st_sales.branch = '東京支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
+    ON cm.year_month = st_gp.year_month AND st_gp.organization = '硝子建材営業部' AND st_gp.detail_category = '硝子建材営業部計' AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON cm.year_month = oet.year_month AND oet.organization = '硝子建材営業部' AND oet.detail_category = '硝子建材営業部計' AND oet.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
@@ -286,6 +295,7 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
     ON cm.year_month = rpt.year_month AND rpt.organization = '硝子建材営業部' AND rpt.detail_category = '硝子建材営業部計' AND rpt.branch = '東京支店'
   WHERE cm.organization = '硝子建材営業部'
+    AND cm.detail_category NOT IN ('硝子建材営業部計')
   GROUP BY cm.year_month, cm.organization
 
   UNION ALL
@@ -293,10 +303,10 @@ tokyo_consolidated AS (
   -- 東京支店計
   SELECT
     cm.year_month, '東京支店' AS organization, '東京支店計' AS detail_category,
-    SUM(cm.sales_actual), SUM(cm.sales_target), SUM(cm.sales_prev_year),
-    SUM(cm.gross_profit_actual), SUM(cm.gross_profit_target), SUM(cm.gross_profit_prev_year),
+    SUM(cm.sales_actual), MAX(st_sales.target_amount) AS sales_target, SUM(cm.sales_prev_year),
+    SUM(cm.gross_profit_actual), MAX(st_gp.target_amount) AS gross_profit_target, SUM(cm.gross_profit_prev_year),
     SAFE_DIVIDE(SUM(cm.gross_profit_actual), SUM(cm.sales_actual)),
-    SAFE_DIVIDE(SUM(cm.gross_profit_target), SUM(cm.sales_target)),
+    SAFE_DIVIDE(MAX(st_gp.target_amount), MAX(st_sales.target_amount)),
     SAFE_DIVIDE(SUM(cm.gross_profit_prev_year), SUM(cm.sales_prev_year)),
     MAX(ed.operating_expense), MAX(oet.target_amount), MAX(ed.operating_expense_prev_year),
     SUM(cm.gross_profit_actual) - COALESCE(MAX(ed.operating_expense), 0),
@@ -316,12 +326,17 @@ tokyo_consolidated AS (
     FROM tokyo_expense_data
     GROUP BY year_month
   ) ed ON cm.year_month = ed.year_month
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
+    ON cm.year_month = st_sales.year_month AND st_sales.organization = '東京支店' AND st_sales.detail_category = '東京支店計' AND st_sales.metric_type = 'sales' AND st_sales.branch = '東京支店'
+  LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp
+    ON cm.year_month = st_gp.year_month AND st_gp.organization = '東京支店' AND st_gp.detail_category = '東京支店計' AND st_gp.metric_type = 'gross_profit' AND st_gp.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_expenses_target` oet
     ON cm.year_month = oet.year_month AND oet.organization = '東京支店' AND oet.detail_category = '東京支店計' AND oet.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.operating_income_target` oit
     ON cm.year_month = oit.year_month AND oit.organization = '東京支店' AND oit.detail_category = '東京支店計' AND oit.branch = '東京支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
     ON cm.year_month = rpt.year_month AND rpt.organization = '東京支店' AND rpt.detail_category = '東京支店計' AND rpt.branch = '東京支店'
+  WHERE cm.detail_category NOT IN ('工事営業部計', '硝子建材営業部計', '東京支店計')
   GROUP BY cm.year_month
 )
 
