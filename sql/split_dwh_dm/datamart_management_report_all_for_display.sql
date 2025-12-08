@@ -31,6 +31,12 @@ SELECT
   secondary_department_sort_order,
   value,
   display_value,
+  -- 百万円単位の表示値（金額項目のみ、元のvalue値を1000000で割る）
+  CASE
+    WHEN secondary_category IN ('本年実績(千円)', '本年目標(千円)', '前年実績(千円)', '累積本年実績(千円)', '累積本年目標(千円)')
+    THEN value / 1000000
+    ELSE NULL
+  END AS display_value_divide_million,
   main_display_flag
 FROM `data-platform-prod-475201.corporate_data_dm.management_documents_all_period_all`
 WHERE NOT (

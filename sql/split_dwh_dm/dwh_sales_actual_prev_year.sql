@@ -96,7 +96,8 @@ nagasaki_prev_year AS (
     detail_category
 ),
 
-fukuoka_prev_year AS (
+-- 福岡支店: 工事部・硝子樹脂部（prev_year_*カラムを使用）
+fukuoka_prev_year_main AS (
   SELECT
     sales_accounting_period AS year_month,
     '福岡支店' AS branch,
@@ -104,7 +105,6 @@ fukuoka_prev_year AS (
     CASE
       WHEN branch_code IN (30, 34) THEN '工事部'
       WHEN branch_code = 31 THEN '硝子樹脂部'
-      WHEN branch_code = 37 THEN '福北センター'
       ELSE 'その他'
     END AS organization,
     -- 部門別分類(福岡支店の組織構造に基づく)
@@ -118,8 +118,6 @@ fukuoka_prev_year AS (
       WHEN branch_code = 31 AND division_code IN (10, 11) THEN '硝子'
       WHEN branch_code = 31 AND division_code IN (30, 31) THEN '樹脂'
       WHEN branch_code = 31 AND division_code NOT IN (10, 11, 30, 31) THEN '建材'
-      -- 福北センター(037)
-      WHEN branch_code = 37 THEN '福北センター'
       ELSE '未分類'
     END AS detail_category,
     -- 金額(円単位)
@@ -128,12 +126,40 @@ fukuoka_prev_year AS (
   FROM
     `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
   WHERE
-    branch_code IN (30, 31, 34, 37)  -- 営業所コード: 030=工事部, 031=硝子樹脂部, 034=内装工事, 037=福北センター
+    branch_code IN (30, 31, 34)  -- 営業所コード: 030=工事部, 031=硝子樹脂部, 034=内装工事
   GROUP BY
     year_month,
     branch,
     organization,
     detail_category
+),
+
+-- 福北センター: 1年前のデータからsales_actual/gross_profit_actualを取得
+-- ※福北センターのprev_year_*カラムは常に0のため、1年前のデータを参照
+fukuoka_prev_year_fukuhoku AS (
+  SELECT
+    DATE_ADD(sales_accounting_period, INTERVAL 1 YEAR) AS year_month,  -- 1年後の月として出力
+    '福岡支店' AS branch,
+    '福北センター' AS organization,
+    '福北センター' AS detail_category,
+    -- 1年前のデータのsales_actual/gross_profit_actualを「前年実績」として使用
+    SUM(sales_actual) AS sales_amount,
+    SUM(gross_profit_actual) AS gross_profit_amount
+  FROM
+    `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
+  WHERE
+    branch_code = 37  -- 営業所コード: 037=福北センター
+  GROUP BY
+    year_month,
+    branch,
+    organization,
+    detail_category
+),
+
+fukuoka_prev_year AS (
+  SELECT * FROM fukuoka_prev_year_main
+  UNION ALL
+  SELECT * FROM fukuoka_prev_year_fukuhoku
 )
 
 SELECT * FROM tokyo_prev_year

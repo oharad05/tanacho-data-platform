@@ -65,7 +65,7 @@ TABLE_CONFIG = {
         "clustering_fields": ["item"]
     },
     "ledger_loss": {
-        "partition_field": "slip_date",  # DATE(slip_date)でパーティション
+        "partition_field": "accounting_month",  # accounting_monthで削除判定
         "clustering_fields": ["classification_type"]
     },
     "stocks": {

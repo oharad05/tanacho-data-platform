@@ -150,10 +150,10 @@ nagasaki_unpivoted AS (
 ),
 
 fukuoka_direct_expenses AS (
-  -- 福岡支店: 部門単位で集計 + 業務部案分
+  -- 福岡支店: 科目ごとに千円丸めしてから合計（PDF方式に準拠）
   SELECT
     sales_accounting_period AS year_month,
-    -- 工事部計: 「工事営業部」または「施工」カラムの合計
+    -- 工事部計: 科目ごとに千円丸め → 合計
     SUM(
       CASE
         WHEN code IN (
@@ -161,12 +161,12 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN construction_sales_department + construction
+        ) THEN ROUND((construction_sales_department + construction) / 1000)
         ELSE 0
       END
-    ) AS construction_direct,
+    ) AS construction_1000,
 
-    -- 硝子樹脂計: 「硝子建材」または「樹脂」カラムの合計
+    -- 硝子建材: 科目ごとに千円丸め → 合計（樹脂とは別計算）
     SUM(
       CASE
         WHEN code IN (
@@ -174,12 +174,12 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN glass_building_material + resin
+        ) THEN ROUND(glass_building_material / 1000)
         ELSE 0
       END
-    ) AS glass_resin_direct,
+    ) AS glass_1000,
 
-    -- GSセンター(gs)の直接費用
+    -- 樹脂建材: 科目ごとに千円丸め → 合計（硝子とは別計算）
     SUM(
       CASE
         WHEN code IN (
@@ -187,12 +187,12 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN gs
+        ) THEN ROUND(resin / 1000)
         ELSE 0
       END
-    ) AS gs_direct,
+    ) AS resin_1000,
 
-    -- 福北センター(fukuhoku合計)の直接費用
+    -- GSセンター: 科目ごとに千円丸め → 合計
     SUM(
       CASE
         WHEN code IN (
@@ -200,15 +200,28 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN (
+        ) THEN ROUND(gs / 1000)
+        ELSE 0
+      END
+    ) AS gs_1000,
+
+    -- 福北センター: 科目ごとに千円丸め → 合計
+    SUM(
+      CASE
+        WHEN code IN (
+          '8331', '8333', '8334', '8335', '8338', '8339',
+          '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
+          '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
+          '8357', '8358', '8359', '8361'
+        ) THEN ROUND((
           fukuhoku_daiwa_glass + fukuhoku_daiwa_welding + fukuhoku_daiwa_branch +
           fukuhoku_nagawa + fukuhoku_moroguchi + fukuhoku_techno + fukuhoku_common
-        )
+        ) / 1000)
         ELSE 0
       END
-    ) AS fukuhoku_direct,
+    ) AS fukuhoku_1000,
 
-    -- 業務部(operations)の費用(案分対象) ※福岡支店はoperationsカラムを使用
+    -- 業務部: 科目ごとに千円丸め → 合計
     SUM(
       CASE
         WHEN code IN (
@@ -216,55 +229,53 @@ fukuoka_direct_expenses AS (
           '8340', '8341', '8342', '8343', '8344', '8345', '8346', '8347',
           '8349', '8350', '8351', '8352', '8353', '8354', '8355', '8356',
           '8357', '8358', '8359', '8361'
-        ) THEN operations
+        ) THEN ROUND(operations / 1000)
         ELSE 0
       END
-    ) AS operations_total
+    ) AS operations_1000
   FROM `data-platform-prod-475201.corporate_data.department_summary`
   GROUP BY year_month
 ),
 
 fukuoka_allocation_ratios AS (
-  -- 案分比率の取得(業務部門案分のみ)、硝子樹脂は合算
+  -- 案分比率の取得(業務部門案分のみ)
+  -- 硝子建材と樹脂建材は別々に取得（合算しない）
   SELECT
     year_month,
-    CASE
-      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
-      ELSE department
-    END AS department,
-    SUM(ratio) AS ratio
+    department,
+    ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '福岡'
     AND category = '業務部門案分'
-  GROUP BY year_month,
-    CASE
-      WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'
-      ELSE department
-    END
 ),
 
 fukuoka_allocated AS (
-  -- 業務部費用の案分計算
+  -- 業務部費用の案分計算（千円単位での計算、硝子と樹脂は別々に案分後合算）
   SELECT
     d.year_month,
     '福岡支店' AS branch,
-    d.construction_direct + (d.operations_total * COALESCE(r_construction.ratio, 0)) AS construction_total,
-    d.glass_resin_direct + (d.operations_total * COALESCE(r_glass.ratio, 0)) AS glass_resin_total,
-    d.gs_direct + (d.operations_total * COALESCE(r_gs.ratio, 0)) AS gs_total,
-    d.fukuhoku_direct + (d.operations_total * COALESCE(r_fukuhoku.ratio, 0)) AS fukuhoku_total  -- GSセンターと同様のロジック
+    -- 工事部計: 直接費 + 業務部案分
+    ROUND(d.construction_1000 + d.operations_1000 * COALESCE(r_construction.ratio, 0)) * 1000 AS construction_total,
+    -- 硝子樹脂計: 硝子と樹脂を別々に案分後合算
+    (ROUND(d.glass_1000 + d.operations_1000 * COALESCE(r_glass.ratio, 0)) +
+     ROUND(d.resin_1000 + d.operations_1000 * COALESCE(r_resin.ratio, 0))) * 1000 AS glass_resin_total,
+    -- GSセンター: 直接費 + 業務部案分
+    ROUND(d.gs_1000 + d.operations_1000 * COALESCE(r_gs.ratio, 0)) * 1000 AS gs_total,
+    -- 福北センター: 案分なし
+    d.fukuhoku_1000 * 1000 AS fukuhoku_total
   FROM fukuoka_direct_expenses d
   LEFT JOIN fukuoka_allocation_ratios r_construction
     ON d.year_month = r_construction.year_month
     AND r_construction.department = '工事'
   LEFT JOIN fukuoka_allocation_ratios r_glass
     ON d.year_month = r_glass.year_month
-    AND r_glass.department = '硝子樹脂'
+    AND r_glass.department = '硝子建材'
+  LEFT JOIN fukuoka_allocation_ratios r_resin
+    ON d.year_month = r_resin.year_month
+    AND r_resin.department = '樹脂建材'
   LEFT JOIN fukuoka_allocation_ratios r_gs
     ON d.year_month = r_gs.year_month
     AND r_gs.department = 'GSセンター'
-  LEFT JOIN fukuoka_allocation_ratios r_fukuhoku
-    ON d.year_month = r_fukuhoku.year_month
-    AND r_fukuhoku.department = '福北センター'
 ),
 
 fukuoka_unpivoted AS (
