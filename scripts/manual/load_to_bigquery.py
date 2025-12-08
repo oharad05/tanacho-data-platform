@@ -56,6 +56,14 @@ TABLE_CONFIG = {
         "partition_field": "period",
         "clustering_fields": ["item"]
     },
+    "profit_plan_term_nagasaki": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
+    "profit_plan_term_fukuoka": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
     "ledger_loss": {
         "partition_field": "slip_date",  # DATE(slip_date)でパーティション
         "clustering_fields": ["classification_type"]
@@ -573,7 +581,7 @@ if __name__ == "__main__":
                 continue
 
             # 既存の指定月データを削除
-            delete_partition_data(client, table_name, gcs_uri, yyyymm)
+            delete_partition_data_by_csv(client, table_name, gcs_uri)
 
             # BigQueryへロード
             load_csv_to_bigquery(client, table_name, gcs_uri, yyyymm)

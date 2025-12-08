@@ -93,6 +93,7 @@ bills_rate AS (
 ),
 
 -- ⑤ 在庫・未成工事（全部署）
+-- 修正: department条件を追加して対象部署を限定
 total_inventory AS (
   SELECT
     DATE_ADD(year_month, INTERVAL 1 MONTH) AS year_month,
@@ -100,6 +101,7 @@ total_inventory AS (
   FROM `data-platform-prod-475201.corporate_data.stocks`
   WHERE branch = '福岡'
     AND category = '未成工事在庫'
+    AND department IN ('工事', 'ビル', '内装工事', '硝子建材', '樹脂')
   GROUP BY year_month
 ),
 

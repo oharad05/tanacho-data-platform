@@ -103,7 +103,7 @@ fukuoka_sales AS (
     -- 組織識別
     CASE
       WHEN branch_code IN (30, 34) THEN '工事部'
-      WHEN branch_code = 31 THEN '硝子樹脂部'
+      WHEN branch_code IN (31, 32) THEN '硝子樹脂部'  -- 031, 032両方を含める
       WHEN branch_code = 37 THEN '福北センター'
       ELSE 'その他'
     END AS organization,
@@ -114,10 +114,10 @@ fukuoka_sales AS (
       WHEN branch_code = 30 AND division_code = 21 THEN 'ビルサッシ'
       -- 内装工事(034)
       WHEN branch_code = 34 THEN '内装工事'
-      -- 硝子樹脂部(031)の部門別
-      WHEN branch_code = 31 AND division_code IN (10, 11) THEN '硝子'
-      WHEN branch_code = 31 AND division_code IN (30, 31) THEN '樹脂'
-      WHEN branch_code = 31 AND division_code NOT IN (10, 11, 30, 31) THEN '建材'
+      -- 硝子樹脂部(031, 032)の部門別
+      WHEN branch_code IN (31, 32) AND division_code IN (10, 11) THEN '硝子'
+      WHEN branch_code IN (31, 32) AND division_code IN (30, 31) THEN '樹脂'
+      WHEN branch_code IN (31, 32) AND division_code NOT IN (10, 11, 30, 31) THEN '建材'
       -- 福北センター(037)
       WHEN branch_code = 37 THEN '福北センター'
       ELSE '未分類'
@@ -128,7 +128,7 @@ fukuoka_sales AS (
   FROM
     `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
   WHERE
-    branch_code IN (30, 31, 34, 37)  -- 営業所コード: 030=工事部, 031=硝子樹脂部, 034=内装工事, 037=福北センター
+    branch_code IN (30, 31, 32, 34, 37)  -- 営業所コード: 030=工事部, 031/032=硝子樹脂部, 034=内装工事, 037=福北センター
   GROUP BY
     year_month,
     branch,

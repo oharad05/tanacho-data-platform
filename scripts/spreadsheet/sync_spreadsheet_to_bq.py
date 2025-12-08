@@ -112,6 +112,8 @@ def transform_data(raw_data: List[List], columns_mapping: pd.DataFrame) -> pd.Da
                     df[col] = pd.to_datetime(df[col].str.strip(), format='%Y/%m', errors='coerce')
                     df[col] = df[col].dt.strftime('%Y-%m-%d')
                 elif dtype == 'INTEGER':
+                    # カンマ区切りの数値を処理（例: '3,782,000' → 3782000）
+                    df[col] = df[col].astype(str).str.replace(',', '', regex=False)
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 elif dtype == 'FLOAT':
                     df[col] = pd.to_numeric(df[col], errors='coerce')

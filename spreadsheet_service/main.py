@@ -2,7 +2,9 @@
 """
 スプレッドシート → GCS → BigQuery 連携サービス (Cloud Run)
 
-このサービスは既存のDrive連携（run_service/main.py）とは完全に独立しています。
+共有ドライブの「手入力用」フォルダからスプレッドシートを自動検出し、
+指定シートのデータをGCS経由でBigQueryに連携します。
+
 - GCSパス: gs://data-platform-landing-prod/spreadsheet/
 - BQテーブル: corporate_data.ss_*
 
@@ -29,24 +31,100 @@ app = Flask(__name__)
 # ===== 環境変数（Cloud Run で設定） =====
 PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
 LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
+# 共有ドライブ内の「手入力用」フォルダID
+MANUAL_INPUT_FOLDER_ID = os.environ.get("MANUAL_INPUT_FOLDER_ID", "1O4eUpl6AWgag1oMTyrtoA7sXEHX3mfxc")
+
 GCS_BASE_PATH = "spreadsheet"  # Drive連携の /raw/, /proceed/ とは完全分離
 BQ_DATASET = "corporate_data"
 TABLE_PREFIX = "ss_"  # 既存テーブルと区別するプレフィックス
 
+# Drive API + Sheets API + Cloud Platform
 SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/cloud-platform"
 ]
 
+# スプレッドシートとシート名のマッピング定義
+# 共有ドライブから検出したスプレッドシートに対して、どのシートをどのテーブルに連携するかを定義
+SPREADSHEET_MAPPING = {
+    # 損益計算書 入力シート（東京支店）
+    "1eEiLA0MfDghuDqbss7xC-wdCqbC-Tj9MVgHisGgqwXA": [
+        {"sheet_name": "システム利用シート_在庫損益・前受け金", "table_name": "inventory_advance_tokyo"},
+    ],
+    # 損益計算書 入力シート（福岡支店）
+    "1yNJU2RCye5yFxKH91UEyKRszWOrT3M-tmk-6SWkTRJA": [
+        {"sheet_name": "システム利用シート_GS売上粗利", "table_name": "gs_sales_profit"},
+        {"sheet_name": "システム利用シート_在庫損益・前受け金", "table_name": "inventory_advance_fukuoka"},
+    ],
+    # 損益計算書 入力シート（長崎支店）
+    "1pcZYlchm6bbowxdUqrmYIXiYSOx-dflmBPviFw4kuTo": [
+        {"sheet_name": "システム利用シート_在庫損益・前受け金", "table_name": "inventory_advance_nagasaki"},
+    ],
+}
 
-def load_mapping_from_gcs() -> pd.DataFrame:
-    """GCSからマッピングファイルを読み込み"""
-    client = storage.Client(project=PROJECT_ID)
-    blob = client.bucket(LANDING_BUCKET).blob(f"{GCS_BASE_PATH}/config/mapping/mapping_files.csv")
-    content = blob.download_as_bytes()
-    df = pd.read_csv(io.BytesIO(content))
-    print(f"[INFO] マッピングファイル読み込み完了: {len(df)}件")
-    return df
+
+def _build_drive_service():
+    """Drive APIサービスを構築"""
+    creds, _ = google_auth_default(scopes=SCOPES)
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
+def _build_sheets_service():
+    """Sheets APIサービスを構築"""
+    creds, _ = google_auth_default(scopes=SCOPES)
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def list_spreadsheets_in_folder(folder_id: str) -> List[Dict]:
+    """
+    共有ドライブのフォルダ内にあるスプレッドシートを一覧取得
+    共有ドライブの場合はcorporaパラメータを使用
+    """
+    drive = _build_drive_service()
+
+    # まずフォルダのdriveIdを取得
+    try:
+        folder_meta = drive.files().get(
+            fileId=folder_id,
+            fields="id,name,driveId",
+            supportsAllDrives=True
+        ).execute()
+        drive_id = folder_meta.get("driveId")
+        print(f"[INFO] フォルダ情報: {folder_meta.get('name')} (driveId: {drive_id})")
+    except Exception as e:
+        print(f"[ERROR] フォルダメタ取得エラー: {e}")
+        drive_id = None
+
+    # 検索クエリ
+    q = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+
+    # 共有ドライブの場合はcorporaを指定
+    if drive_id:
+        res = drive.files().list(
+            q=q,
+            fields="files(id,name)",
+            corpora="drive",
+            driveId=drive_id,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+            pageSize=100
+        ).execute()
+    else:
+        res = drive.files().list(
+            q=q,
+            fields="files(id,name)",
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+            pageSize=100
+        ).execute()
+
+    files = res.get("files", [])
+    print(f"[INFO] 「手入力用」フォルダ内のスプレッドシート: {len(files)}件")
+    for f in files:
+        print(f"  - {f['name']} (ID: {f['id']})")
+
+    return files
 
 
 def load_columns_mapping_from_gcs(table_name: str) -> pd.DataFrame:
@@ -61,11 +139,10 @@ def load_columns_mapping_from_gcs(table_name: str) -> pd.DataFrame:
 
 def fetch_spreadsheet_data(sheet_id: str, sheet_name: str) -> List[List]:
     """Sheets APIでスプレッドシートのデータを取得"""
-    creds, _ = google_auth_default(scopes=SCOPES)
-    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    sheets = _build_sheets_service()
 
     # シート全体を取得
-    result = service.spreadsheets().values().get(
+    result = sheets.spreadsheets().values().get(
         spreadsheetId=sheet_id,
         range=f"'{sheet_name}'!A:Z"
     ).execute()
@@ -199,57 +276,72 @@ def sync_all_spreadsheets() -> dict:
         "timestamp": datetime.now().isoformat()
     }
 
-    # 1. マッピング読み込み
-    mapping_df = load_mapping_from_gcs()
+    # 1. 共有ドライブの「手入力用」フォルダからスプレッドシートを検出
+    spreadsheets = list_spreadsheets_in_folder(MANUAL_INPUT_FOLDER_ID)
 
-    for _, row in mapping_df.iterrows():
-        sheet_id = row['sheet_id']
-        sheet_name = row['sheet_name']
-        table_name = row['en_name']
+    # 2. 検出したスプレッドシートをマッピングに基づいて処理
+    for ss in spreadsheets:
+        sheet_id = ss['id']
+        ss_name = ss['name']
 
-        print(f"\n[INFO] 処理開始: {table_name}")
-        print(f"  シートID: {sheet_id}")
-        print(f"  シート名: {sheet_name}")
+        # マッピングに存在するか確認
+        if sheet_id not in SPREADSHEET_MAPPING:
+            print(f"[SKIP] マッピング未定義: {ss_name} (ID: {sheet_id})")
+            results["skipped"].append({
+                "spreadsheet": ss_name,
+                "reason": "mapping not defined"
+            })
+            continue
 
-        try:
-            # 2. カラムマッピング読み込み
-            columns_mapping = load_columns_mapping_from_gcs(table_name)
+        # 各シートを処理
+        for mapping in SPREADSHEET_MAPPING[sheet_id]:
+            sheet_name = mapping["sheet_name"]
+            table_name = mapping["table_name"]
 
-            # 3. スプレッドシートからデータ取得
-            raw_data = fetch_spreadsheet_data(sheet_id, sheet_name)
+            print(f"\n[INFO] 処理開始: {table_name}")
+            print(f"  スプレッドシート: {ss_name}")
+            print(f"  シート名: {sheet_name}")
 
-            # 4. データ変換
-            df = transform_data(raw_data, columns_mapping)
+            try:
+                # 3. カラムマッピング読み込み
+                columns_mapping = load_columns_mapping_from_gcs(table_name)
 
-            if df.empty:
-                print(f"[WARN] データが空のためスキップ: {table_name}")
-                results["skipped"].append({
-                    "table": table_name,
-                    "reason": "empty data"
+                # 4. スプレッドシートからデータ取得
+                raw_data = fetch_spreadsheet_data(sheet_id, sheet_name)
+
+                # 5. データ変換
+                df = transform_data(raw_data, columns_mapping)
+
+                if df.empty:
+                    print(f"[WARN] データが空のためスキップ: {table_name}")
+                    results["skipped"].append({
+                        "table": table_name,
+                        "reason": "empty data"
+                    })
+                    continue
+
+                # 6. GCSに保存
+                gcs_path = save_to_gcs(df, table_name)
+
+                # 7. BigQueryにロード
+                row_count = load_to_bigquery(gcs_path, table_name, columns_mapping)
+
+                results["success"].append({
+                    "table": f"{TABLE_PREFIX}{table_name}",
+                    "rows": row_count,
+                    "gcs_path": gcs_path,
+                    "source": ss_name
                 })
-                continue
+                print(f"[INFO] 完了: {table_name}")
 
-            # 5. GCSに保存
-            gcs_path = save_to_gcs(df, table_name)
-
-            # 6. BigQueryにロード
-            row_count = load_to_bigquery(gcs_path, table_name, columns_mapping)
-
-            results["success"].append({
-                "table": f"{TABLE_PREFIX}{table_name}",
-                "rows": row_count,
-                "gcs_path": gcs_path
-            })
-            print(f"[INFO] 完了: {table_name}")
-
-        except Exception as e:
-            error_msg = str(e)
-            print(f"[ERROR] エラー: {table_name} - {error_msg}")
-            traceback.print_exc()
-            results["failed"].append({
-                "table": table_name,
-                "error": error_msg
-            })
+            except Exception as e:
+                error_msg = str(e)
+                print(f"[ERROR] エラー: {table_name} - {error_msg}")
+                traceback.print_exc()
+                results["failed"].append({
+                    "table": table_name,
+                    "error": error_msg
+                })
 
     return results
 
@@ -268,6 +360,7 @@ def sync():
     print("=" * 60)
     print("スプレッドシート → BigQuery 連携開始")
     print(f"実行日時: {datetime.now().isoformat()}")
+    print(f"対象フォルダID: {MANUAL_INPUT_FOLDER_ID}")
     print("=" * 60)
 
     try:
@@ -304,6 +397,12 @@ def root():
         "endpoints": {
             "POST /sync": "全スプレッドシートを同期",
             "GET /health": "ヘルスチェック"
+        },
+        "config": {
+            "manual_input_folder_id": MANUAL_INPUT_FOLDER_ID,
+            "gcs_base_path": f"gs://{LANDING_BUCKET}/{GCS_BASE_PATH}/",
+            "bq_dataset": BQ_DATASET,
+            "table_prefix": TABLE_PREFIX
         }
     })
 

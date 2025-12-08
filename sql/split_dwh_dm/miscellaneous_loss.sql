@@ -39,10 +39,10 @@ WITH tokyo_loss AS (
       END
     ) AS yamamoto_loss,
 
-    -- 硝子建材営業部: 硝子建材営業課(20) or 硝子建材営業部(62)
+    -- 硝子建材営業部: 硝子建材営業課(20)のみ
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) THEN amount
+        WHEN own_department_code = 20 THEN amount
         ELSE 0
       END
     ) AS glass_sales_loss
@@ -91,13 +91,14 @@ nagasaki_direct_loss AS (
 ),
 
 nagasaki_allocation_ratios AS (
-  -- 案分比率の取得
+  -- 案分比率の取得（業務部門案分のみ）
   SELECT
     year_month,
     department,
     ratio
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
+    AND category = '業務部門案分'
 ),
 
 nagasaki_allocated AS (
@@ -124,12 +125,16 @@ nagasaki_unpivoted AS (
 
 fukuoka_department_data AS (
   -- 福岡支店: 部門集計表から取得 (コード8870=雑損失)
+  -- 修正: カラム名を正しいものに変更
+  --   construction_department → construction_sales_department + construction
+  --   glass_building_material_sales_department → glass_building_material + resin
+  --   operations_department → operations
   SELECT
     sales_accounting_period AS year_month,
     code,
-    COALESCE(construction_department, 0) AS construction_dept_amount,
-    COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
-    COALESCE(operations_department, 0) AS operations_dept_amount,
+    COALESCE(construction_sales_department, 0) + COALESCE(construction, 0) AS construction_dept_amount,
+    COALESCE(glass_building_material, 0) + COALESCE(resin, 0) AS glass_dept_amount,
+    COALESCE(operations, 0) AS operations_dept_amount,
     COALESCE(gs, 0) AS gs_amount,
     COALESCE(
       fukuhoku_daiwa_glass + fukuhoku_daiwa_welding + fukuhoku_daiwa_branch +
