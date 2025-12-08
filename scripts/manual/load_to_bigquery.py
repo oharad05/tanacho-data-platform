@@ -81,12 +81,12 @@ TABLE_CONFIG = {
         "clustering_fields": ["branch_code"]
     },
     "construction_progress_days_amount": {
-        "partition_field": "slip_date",
+        "partition_field": "property_period",
         "clustering_fields": ["branch_code"]
     },
     "construction_progress_days_final_date": {
-        "partition_field": "slip_date",
-        "clustering_fields": ["branch_code"]
+        "partition_field": "final_billing_sales_date",
+        "clustering_fields": []
     },
 }
 
