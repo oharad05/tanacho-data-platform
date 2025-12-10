@@ -818,6 +818,7 @@ tokyo_consolidated AS (
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_recurring_profit_target` rpt
     ON dm.year_month = rpt.year_month AND dm.organization = rpt.organization AND dm.detail_category = rpt.detail_category AND rpt.branch = '福岡支店'
   WHERE dm.detail_category NOT LIKE '%計'
+    AND dm.detail_category != 'GSセンター'  -- GSセンターは専用クエリ(950行目)で処理するため除外
 
   UNION ALL
 
@@ -947,16 +948,16 @@ tokyo_consolidated AS (
 
   UNION ALL
 
-  -- GSセンター（売上・売上総利益はスプレッドシートから取得）
+  -- GSセンター（売上・売上総利益実績はスプレッドシートから取得、目標値はdwh_sales_target（Excel経由）から取得）
   SELECT
     oe.year_month,
     'GSセンター' AS organization,
     'GSセンター' AS detail_category,
     COALESCE(gs.sales_amount, 0) AS sales_actual,
-    st_sales.target_amount AS sales_target,
+    st_sales.target_amount AS sales_target,  -- dwh_sales_target（Excel: profit_plan_term_fukuoka経由）から取得
     COALESCE(gs_prev.sales_amount, 0) AS sales_prev_year,
     COALESCE(gs.gross_profit, 0) AS gross_profit_actual,
-    st_gp.target_amount AS gross_profit_target,
+    st_gp.target_amount AS gross_profit_target,  -- dwh_sales_target（Excel: profit_plan_term_fukuoka経由）から取得
     COALESCE(gs_prev.gross_profit, 0) AS gross_profit_prev_year,
     SAFE_DIVIDE(COALESCE(gs.gross_profit, 0), NULLIF(COALESCE(gs.sales_amount, 0), 0)) AS gross_profit_margin_actual,
     SAFE_DIVIDE(st_gp.target_amount, st_sales.target_amount) AS gross_profit_margin_target,
@@ -984,6 +985,7 @@ tokyo_consolidated AS (
     ON oe.year_month = gs.posting_month AND gs.sales_office = 'GSセンター'
   LEFT JOIN `data-platform-prod-475201.corporate_data.ss_gs_sales_profit` gs_prev
     ON DATE_SUB(oe.year_month, INTERVAL 1 YEAR) = gs_prev.posting_month AND gs_prev.sales_office = 'GSセンター'
+  -- 目標値はdwh_sales_target（Excel: profit_plan_term_fukuoka経由）から取得
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_sales
     ON oe.year_month = st_sales.year_month AND st_sales.metric_type = 'sales' AND st_sales.organization = 'GSセンター' AND st_sales.detail_category = 'GSセンター' AND st_sales.branch = '福岡支店'
   LEFT JOIN `data-platform-prod-475201.corporate_data_dwh.dwh_sales_target` st_gp

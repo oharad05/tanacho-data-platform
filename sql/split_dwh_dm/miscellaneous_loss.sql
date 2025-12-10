@@ -111,10 +111,10 @@ nagasaki_allocated AS (
   FROM nagasaki_direct_loss d
   LEFT JOIN nagasaki_allocation_ratios r_construction
     ON d.year_month = r_construction.year_month
-    AND r_construction.department = '工事営業部'
+    AND r_construction.department = '工事'
   LEFT JOIN nagasaki_allocation_ratios r_glass
     ON d.year_month = r_glass.year_month
-    AND r_glass.department = '硝子建材営業部'
+    AND r_glass.department = '硝子建材'
 ),
 
 nagasaki_unpivoted AS (
