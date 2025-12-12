@@ -81,6 +81,22 @@ cumulative_recurring_profit AS (
   GROUP BY am_target.year_month, am_target.detail_category
 ),
 -- ============================================================
+-- 経常利益の前年実績取得（自己結合）
+-- ============================================================
+recurring_profit_prev_year AS (
+  SELECT
+    am_curr.year_month,
+    am_curr.detail_category,
+    am_curr.recurring_profit_actual,
+    am_curr.recurring_profit_target,
+    am_prev.recurring_profit_actual AS recurring_profit_prev_year
+  FROM aggregated_metrics am_curr
+  LEFT JOIN aggregated_metrics am_prev
+    ON am_curr.detail_category = am_prev.detail_category
+    AND am_prev.year_month = DATE_SUB(am_curr.year_month, INTERVAL 1 YEAR)
+  WHERE am_curr.recurring_profit_actual IS NOT NULL
+),
+-- ============================================================
 -- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
 vertical_format AS (
@@ -1044,13 +1060,45 @@ vertical_format AS (
 
   UNION ALL
 
+  -- 経常利益: 前年実績
+  SELECT
+    rpp.year_month,
+    '経常利益',
+    11,
+    '前年実績',
+    1,
+    '東京支店',
+    rpp.detail_category,
+    CASE rpp.detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    rpp.recurring_profit_prev_year
+  FROM recurring_profit_prev_year rpp
+
+  UNION ALL
+
   -- 経常利益: 本年目標
   SELECT
     year_month,
     '経常利益',
     11,
     '本年目標',
-    1,
+    2,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1080,7 +1128,7 @@ vertical_format AS (
     '経常利益',
     11,
     '本年実績',
-    2,
+    3,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1103,6 +1151,73 @@ vertical_format AS (
     END,
     recurring_profit_actual
   FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 経常利益: 前年比(%)
+  SELECT
+    year_month,
+    '経常利益',
+    11,
+    '前年比(%)',
+    4,
+    '東京支店',
+    detail_category,
+    CASE detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    SAFE_DIVIDE(rpp.recurring_profit_actual, rpp.recurring_profit_prev_year)
+  FROM recurring_profit_prev_year rpp
+  WHERE rpp.recurring_profit_prev_year IS NOT NULL AND rpp.recurring_profit_prev_year != 0
+
+  UNION ALL
+
+  -- 経常利益: 目標比(%)
+  SELECT
+    rpp.year_month,
+    '経常利益',
+    11,
+    '目標比(%)',
+    5,
+    '東京支店',
+    rpp.detail_category,
+    CASE rpp.detail_category
+      WHEN '東京支店計' THEN 1
+      WHEN '工事営業部計' THEN 2
+      WHEN '佐々木（大成・鹿島他）' THEN 3
+      WHEN '浅井（清水他）' THEN 4
+      WHEN '小笠原（三井住友他）' THEN 5
+      WHEN '高石（内装・リニューアル）' THEN 6
+      WHEN 'ガラス工事計' THEN 8
+      WHEN '山本（改装）' THEN 9
+      WHEN '硝子建材営業部計' THEN 10
+      WHEN '硝子工事' THEN 11
+      WHEN 'ビルサッシ' THEN 12
+      WHEN '硝子販売' THEN 13
+      WHEN 'サッシ販売' THEN 14
+      WHEN 'サッシ完成品' THEN 15
+      WHEN 'その他' THEN 16
+      ELSE 99
+    END,
+    SAFE_DIVIDE(rpp.recurring_profit_actual, rpp.recurring_profit_target)
+  FROM recurring_profit_prev_year rpp
+  WHERE rpp.recurring_profit_target IS NOT NULL AND rpp.recurring_profit_target != 0
+
   UNION ALL
   -- 経常利益: 累積本年目標（期首9/1からの累積）
   SELECT
@@ -1110,7 +1225,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年目標',
-    3,
+    6,
     '東京支店',
     detail_category,
     CASE detail_category
@@ -1141,7 +1256,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年実績',
-    4,
+    7,
     '東京支店',
     detail_category,
     CASE detail_category

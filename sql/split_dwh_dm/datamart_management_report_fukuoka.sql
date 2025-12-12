@@ -81,6 +81,22 @@ cumulative_recurring_profit AS (
   GROUP BY am_target.year_month, am_target.detail_category
 ),
 -- ============================================================
+-- 経常利益の前年実績取得（自己結合）
+-- ============================================================
+recurring_profit_prev_year AS (
+  SELECT
+    am_curr.year_month,
+    am_curr.detail_category,
+    am_curr.recurring_profit_actual,
+    am_curr.recurring_profit_target,
+    am_prev.recurring_profit_actual AS recurring_profit_prev_year
+  FROM aggregated_metrics am_curr
+  LEFT JOIN aggregated_metrics am_prev
+    ON am_curr.detail_category = am_prev.detail_category
+    AND am_prev.year_month = DATE_SUB(am_curr.year_month, INTERVAL 1 YEAR)
+  WHERE am_curr.recurring_profit_actual IS NOT NULL
+),
+-- ============================================================
 -- 11. 縦持ち形式への変換（UNION ALL）
 -- ============================================================
 vertical_format AS (
@@ -924,13 +940,41 @@ vertical_format AS (
 
   UNION ALL
 
+  -- 経常利益: 前年実績
+  SELECT
+    rpp.year_month,
+    '経常利益',
+    11,
+    '前年実績',
+    1,
+    '福岡支店',
+    rpp.detail_category,
+    CASE rpp.detail_category
+      WHEN '福岡支店計' THEN 100
+      WHEN '工事部計' THEN 101
+      WHEN '硝子工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '内装工事' THEN 104
+      WHEN '硝子樹脂計' THEN 105
+      WHEN '硝子' THEN 106
+      WHEN '建材' THEN 107
+      WHEN '樹脂' THEN 108
+      WHEN 'GSセンター' THEN 109
+      WHEN '福北センター' THEN 110
+      ELSE 199
+    END,
+    rpp.recurring_profit_prev_year
+  FROM recurring_profit_prev_year rpp
+
+  UNION ALL
+
   -- 経常利益: 本年目標
   SELECT
     year_month,
     '経常利益',
     11,
     '本年目標',
-    1,
+    2,
     '福岡支店',
     detail_category,
     CASE detail_category
@@ -956,7 +1000,7 @@ vertical_format AS (
     '経常利益',
     11,
     '本年実績',
-    2,
+    3,
     '福岡支店',
     detail_category,
     CASE detail_category
@@ -975,6 +1019,65 @@ vertical_format AS (
     END,
     recurring_profit_actual
   FROM aggregated_metrics
+
+  UNION ALL
+
+  -- 経常利益: 前年比(%)
+  SELECT
+    year_month,
+    '経常利益',
+    11,
+    '前年比(%)',
+    4,
+    '福岡支店',
+    detail_category,
+    CASE detail_category
+      WHEN '福岡支店計' THEN 100
+      WHEN '工事部計' THEN 101
+      WHEN '硝子工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '内装工事' THEN 104
+      WHEN '硝子樹脂計' THEN 105
+      WHEN '硝子' THEN 106
+      WHEN '建材' THEN 107
+      WHEN '樹脂' THEN 108
+      WHEN 'GSセンター' THEN 109
+      WHEN '福北センター' THEN 110
+      ELSE 199
+    END,
+    SAFE_DIVIDE(rpp.recurring_profit_actual, rpp.recurring_profit_prev_year)
+  FROM recurring_profit_prev_year rpp
+  WHERE rpp.recurring_profit_prev_year IS NOT NULL AND rpp.recurring_profit_prev_year != 0
+
+  UNION ALL
+
+  -- 経常利益: 目標比(%)
+  SELECT
+    rpp.year_month,
+    '経常利益',
+    11,
+    '目標比(%)',
+    5,
+    '福岡支店',
+    rpp.detail_category,
+    CASE rpp.detail_category
+      WHEN '福岡支店計' THEN 100
+      WHEN '工事部計' THEN 101
+      WHEN '硝子工事' THEN 102
+      WHEN 'ビルサッシ' THEN 103
+      WHEN '内装工事' THEN 104
+      WHEN '硝子樹脂計' THEN 105
+      WHEN '硝子' THEN 106
+      WHEN '建材' THEN 107
+      WHEN '樹脂' THEN 108
+      WHEN 'GSセンター' THEN 109
+      WHEN '福北センター' THEN 110
+      ELSE 199
+    END,
+    SAFE_DIVIDE(rpp.recurring_profit_actual, rpp.recurring_profit_target)
+  FROM recurring_profit_prev_year rpp
+  WHERE rpp.recurring_profit_target IS NOT NULL AND rpp.recurring_profit_target != 0
+
   UNION ALL
   -- 経常利益: 累積本年目標（期首9/1からの累積）
   SELECT
@@ -982,7 +1085,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年目標',
-    3,
+    6,
     '福岡支店',
     detail_category,
     CASE detail_category
@@ -1009,7 +1112,7 @@ vertical_format AS (
     '経常利益',
     11,
     '累積本年実績',
-    4,
+    7,
     '福岡支店',
     detail_category,
     CASE detail_category

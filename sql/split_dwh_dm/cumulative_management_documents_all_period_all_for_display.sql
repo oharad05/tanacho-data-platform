@@ -36,8 +36,10 @@ SELECT
   cumulative_value,
   -- 百万円単位の表示値（金額項目は千円単位の値を1000で割る = 元の値を1000000で割る、%項目はそのまま）
   CASE
-    WHEN secondary_category IN ('本年実績(千円)', '本年目標(千円)', '前年実績(千円)', '累積本年実績(千円)', '累積本年目標(千円)')
+    WHEN secondary_category IN ('本年実績(千円)', '本年目標(千円)', '前年実績(千円)', '累積本年実績(千円)', '累積本年目標(千円)', '累積前年実績(千円)')
     THEN cumulative_value / 1000
+    WHEN secondary_category IN ('目標比(%)', '前年比(%)', '累積目標比(%)', '累積前年比(%)')
+    THEN cumulative_value
     WHEN secondary_category LIKE '%(%)'
     THEN cumulative_value
     ELSE NULL
@@ -68,6 +70,11 @@ SELECT
     WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '目標比' THEN 3
     WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '前年実績' THEN 4
     WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '前年比' THEN 5
+    WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '累積本年目標' THEN 6
+    WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '累積本年実績' THEN 7
+    WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '累積目標比' THEN 8
+    WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '累積前年実績' THEN 9
+    WHEN REGEXP_REPLACE(secondary_category, r'\(千円\)|\(%\)', '') = '累積前年比' THEN 10
     ELSE NULL
   END AS sales_performance_category_sort_order
 FROM `data-platform-prod-475201.corporate_data_dm.cumulative_management_documents_all_period_all`

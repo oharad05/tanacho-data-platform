@@ -414,6 +414,124 @@ gross_margin_target_data AS (
     SAFE_DIVIDE(current_year_margin, target_margin) AS cumulative_value
   FROM gross_margin_ratio_base
   WHERE target_margin IS NOT NULL
+),
+
+-- ============================================================
+-- 経常利益の累積目標比・前年比計算用データ
+-- 経常利益は累積本年実績(千円)と累積本年目標(千円)がソースにあるため
+-- それらの累積値から比率を計算する
+-- ============================================================
+recurring_profit_ratio_base AS (
+  SELECT
+    c1.date,
+    c1.date_sort_key,
+    c1.date_label,
+    c1.fiscal_year,
+    c1.fiscal_month,
+    c1.main_category,
+    c1.main_category_sort_order,
+    c1.main_department,
+    c1.main_department_sort_order,
+    c1.secondary_department,
+    c1.secondary_department_sort_order,
+    c1.main_display_flag,
+    c1.cumulative_value AS cumulative_actual,
+    c2.cumulative_value AS cumulative_target,
+    c3.cumulative_value AS cumulative_prev_year
+  FROM cumulative_amount c1
+  LEFT JOIN cumulative_amount c2
+    ON c1.date = c2.date
+    AND c1.fiscal_year = c2.fiscal_year
+    AND c1.main_department = c2.main_department
+    AND c1.secondary_department = c2.secondary_department
+    AND c1.main_category = c2.main_category
+    AND c2.secondary_category = '累積本年目標(千円)'
+  LEFT JOIN cumulative_amount c3
+    ON c1.date = c3.date
+    AND c1.fiscal_year = c3.fiscal_year
+    AND c1.main_department = c3.main_department
+    AND c1.secondary_department = c3.secondary_department
+    AND c1.main_category = c3.main_category
+    AND c3.secondary_category = '前年実績(千円)'
+  WHERE c1.main_category = '経常利益'
+    AND c1.secondary_category = '累積本年実績(千円)'
+),
+
+-- ============================================================
+-- 経常利益の累積目標比データ
+-- ============================================================
+recurring_profit_target_ratio_data AS (
+  SELECT
+    date,
+    date_sort_key,
+    date_label,
+    fiscal_year,
+    fiscal_month,
+    main_category,
+    main_category_sort_order,
+    '累積目標比(%)' AS secondary_category,
+    5 AS secondary_category_sort_order,
+    main_department,
+    main_department_sort_order,
+    secondary_department,
+    secondary_department_sort_order,
+    main_display_flag,
+    NULL AS monthly_value,
+    -- 累積目標比 = 累積本年実績 ÷ 累積本年目標
+    SAFE_DIVIDE(cumulative_actual, cumulative_target) AS cumulative_value
+  FROM recurring_profit_ratio_base
+),
+
+-- ============================================================
+-- 経常利益の累積前年比データ
+-- ============================================================
+recurring_profit_yoy_ratio_data AS (
+  SELECT
+    date,
+    date_sort_key,
+    date_label,
+    fiscal_year,
+    fiscal_month,
+    main_category,
+    main_category_sort_order,
+    '累積前年比(%)' AS secondary_category,
+    7 AS secondary_category_sort_order,
+    main_department,
+    main_department_sort_order,
+    secondary_department,
+    secondary_department_sort_order,
+    main_display_flag,
+    NULL AS monthly_value,
+    -- 累積前年比 = 累積本年実績 ÷ 累積前年実績
+    SAFE_DIVIDE(cumulative_actual, cumulative_prev_year) AS cumulative_value
+  FROM recurring_profit_ratio_base
+),
+
+-- ============================================================
+-- 経常利益の累積前年実績データ
+-- 前年実績(千円)の累積値を「累積前年実績(千円)」として出力
+-- ============================================================
+recurring_profit_prev_year_data AS (
+  SELECT
+    date,
+    date_sort_key,
+    date_label,
+    fiscal_year,
+    fiscal_month,
+    main_category,
+    main_category_sort_order,
+    '累積前年実績(千円)' AS secondary_category,
+    6 AS secondary_category_sort_order,
+    main_department,
+    main_department_sort_order,
+    secondary_department,
+    secondary_department_sort_order,
+    main_display_flag,
+    monthly_value,
+    cumulative_value
+  FROM cumulative_amount
+  WHERE main_category = '経常利益'
+    AND secondary_category = '前年実績(千円)'
 )
 
 -- ============================================================
@@ -430,6 +548,12 @@ UNION ALL
 SELECT * FROM gross_margin_yoy_data
 UNION ALL
 SELECT * FROM gross_margin_target_data
+UNION ALL
+SELECT * FROM recurring_profit_target_ratio_data
+UNION ALL
+SELECT * FROM recurring_profit_yoy_ratio_data
+UNION ALL
+SELECT * FROM recurring_profit_prev_year_data
 
 ORDER BY
   date_sort_key,

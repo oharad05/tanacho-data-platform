@@ -10,14 +10,14 @@ sql/tmp_file/に正解データのpdfがあります｡
 ### 手順1-1.pdfとcsvの比較
 date(2025/09)などを指定します｡2025/09の場合､下記の{yymm}は2509と読み解いてください｡
 1-1.main_department='東京支店'
-pdf名: {yymm}損益東京.pdf
+pdf名: {yymm}損益東京.pdf の全ページ
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位).csv の東京支店の範囲
 1-2.main_department='長崎支店'
-pdf名: {yymm}損益長崎.pdf
+pdf名: {yymm}損益長崎.pdf の1ページ目
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位).csv の長崎支店の範囲
 main_category×secondary_category×secondary_department
 1-3.main_department='福岡支店'
-pdf名: {yymm}損益福岡.pdf
+pdf名: {yymm}損益福岡.pdf の1ページ目
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位).csv の福岡支店の範囲
 
 ### 手順1-2.比較結果の出力
@@ -29,14 +29,24 @@ pdf_val(pdfでの値)
 csv_val(csvでの値)
 diff_pdf_csv(pdf_val-csv_val)
 is_equal(diff_pdf_csv=0なら1､そうでないならゼロ)
+is_large_diff(diff_pdf_csvの絶対値が6以上なら1､そうでないなら0)
+invest_result(一旦nullで定義)
 
-### 手順1-3.比較結果の報告
+### 手順1-3.調査結果・提案の入力
+invest_resultに､調査した結果をテキストで入力してください｡
+
+### 手順1-4.比較結果の報告
 手順1-2の出力のうち､is_equal=0の項目を表示してください｡
 
 # データ整合性確認後の修正プロセス
 is_large_diff = 1の項目を対象に､ズレが起きている原因の調査及び解決策の提案を行ってください｡
 調査・提案は order by main_department_sort_order,secondary_department_sort_order,main_category_sort_order,secondary_category_sort_orderの順に行ってください｡
-必ず1項目毎に調査を止めてください｡対応方針を聞いて下さい｡
+調査に迷った場合は､sql/tmp_file/データソース一覧・加工内容 - #1_1経営資料（当月）_latest.csvが仕様書なので､そこを参考にしてください｡
+必ず1項目毎に調査を止めてください｡対応方針を表示してください｡また､invest_resultに入力する内容を■invest_resultへの入力内容という項目で表示してください｡もし何らかの条件でpdfとcsvが完全一致もしくは誤差が少ない(±2程度)する場合は「◯◯の条件の場合､pdfとcsvの差分は△△となる」という記述を必ず入れてください｡
+「SSでの可視化 - PL(月単位)_before.csv」のファイルは､データを再取り込みする前の結果です｡この結果がpdfと一致している可能性があります｡一致している場合は報告をし､その場合はデータ自体の問題の可能性が高いので､その方針で調査してください｡
+before時に連携して使ったデータはcorporate_date_bkに存在するので､必要に応じて参照してください｡
+原因はmain_category×secondary_category毎に同一の可能性があるので､調査する際はそれを参考にしてください｡
+「OKです｡invest_resultを入力して次に進んでください」と書いたら､■invest_resultへの入力内容の内容を入力し次に進んで問題ないです｡
 
 # tanacho-pipeline プロジェクト設定
 

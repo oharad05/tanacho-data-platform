@@ -431,8 +431,9 @@ def process_gcs_files(yyyymm: str):
         try:
             # ファイル名マッピングからシート名を取得
             sheet_name = None
+            jp_name = None
             if table_name in file_name_mapping:
-                _, sheet_name = file_name_mapping[table_name]
+                jp_name, sheet_name = file_name_mapping[table_name]
 
             # GCSパス（英語ファイル名を使用 - sync_drive_to_gcs.pyが英語スラグで保存するため）
             raw_path = f"raw/{yyyymm}/{table_name}.xlsx"
@@ -441,9 +442,23 @@ def process_gcs_files(yyyymm: str):
             # rawファイルをダウンロード
             raw_blob = bucket.blob(raw_path)
             if not raw_blob.exists():
-                print(f"⚠️  ファイルが存在しません: gs://{LANDING_BUCKET}/{raw_path}")
-                error_count += 1
-                continue
+                # 同じ日本語ファイル名を共有する他のテーブルからソースファイルを探す
+                source_found = False
+                if jp_name:
+                    for other_table, (other_jp, _) in file_name_mapping.items():
+                        if other_jp == jp_name and other_table != table_name:
+                            alt_raw_path = f"raw/{yyyymm}/{other_table}.xlsx"
+                            alt_blob = bucket.blob(alt_raw_path)
+                            if alt_blob.exists():
+                                raw_path = alt_raw_path
+                                raw_blob = alt_blob
+                                source_found = True
+                                print(f"📁 共有ソース使用: {table_name} ← {alt_raw_path}")
+                                break
+                if not source_found:
+                    print(f"⚠️  ファイルが存在しません: gs://{LANDING_BUCKET}/{raw_path}")
+                    error_count += 1
+                    continue
 
             # 一時ファイルにダウンロード
             temp_excel = f"/tmp/{table_name}.xlsx"
