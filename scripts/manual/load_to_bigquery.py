@@ -8,11 +8,16 @@ CSVファイルをBigQueryテーブルにロード
 - GCSのproceed/フォルダにある全年月のCSVをロード
 
 テーブルとカラムの説明も自動設定
+
+テーブルタイプ:
+- 単月型: 各CSVがその月のデータのみ含む → 全CSVをそのままロード
+- 累積型: 各CSVが全期間のデータを含む → 全CSVを結合してキー毎に最新フォルダを優先
 """
 
 import os
 import sys
 import time
+import io
 import pandas as pd
 from typing import List, Dict, Optional
 from google.cloud import bigquery
@@ -29,6 +34,36 @@ COLUMNS_PATH = "config/columns"
 # 期首（データ開始日）
 FISCAL_START_YYYYMM = "202409"  # 2024年9月
 FISCAL_START_DATE = "2024-09-01"
+
+# 累積型テーブルの定義（各CSVが全期間のデータを含むテーブル）
+# キー毎に最新フォルダ（max(source_folder)）のデータを優先してロード
+CUMULATIVE_TABLE_CONFIG = {
+    "billing_balance": {
+        # ソース: 3_請求残高一覧表（月間）.xlsx
+        "unique_keys": ["sales_month", "branch_code", "branch_name"],
+    },
+    "profit_plan_term": {
+        # ソース: 12_損益5期目標.xlsx（東京支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "profit_plan_term_nagasaki": {
+        # ソース: 12_損益5期目標.xlsx（長崎支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "profit_plan_term_fukuoka": {
+        # ソース: 12_損益5期目標.xlsx（福岡支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "ms_allocation_ratio": {
+        # ソース: 10_案分比率マスタ.xlsx
+        "unique_keys": ["year_month", "branch", "department", "category"],
+    },
+    "construction_progress_days_amount": {
+        # ソース: 工事進捗日数金額.xlsx
+        # property_period（パーティション列）も含めてユニークキーとする
+        "unique_keys": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
+    },
+}
 
 # テーブル定義とパーティション列のマッピング
 TABLE_CONFIG = {
@@ -413,6 +448,120 @@ def delete_partition_data_by_csv(
         traceback.print_exc()
         return True  # 削除失敗してもロードは続行
 
+
+def process_cumulative_table(
+    client: bigquery.Client,
+    storage_client: storage.Client,
+    table_name: str,
+    target_months: List[str]
+) -> bool:
+    """
+    累積型テーブルのロード処理
+
+    全月のCSVを読み込み、source_folderカラムを追加して結合。
+    キー毎にmax(source_folder)のデータを優先して重複を解消。
+
+    Args:
+        client: BigQueryクライアント
+        storage_client: GCSクライアント
+        table_name: テーブル名
+        target_months: 対象年月リスト
+
+    Returns:
+        成功時True
+    """
+    print(f"\n📊 処理中（累積型）: {table_name}")
+
+    config = CUMULATIVE_TABLE_CONFIG[table_name]
+    unique_keys = config["unique_keys"]
+    bucket = storage_client.bucket(LANDING_BUCKET)
+
+    # 全月のCSVを読み込み、source_folderカラムを追加
+    all_dfs = []
+    for yyyymm in target_months:
+        blob = bucket.blob(f"proceed/{yyyymm}/{table_name}.csv")
+        if blob.exists():
+            csv_content = blob.download_as_string().decode("utf-8")
+            df = pd.read_csv(io.StringIO(csv_content))
+            df["source_folder"] = int(yyyymm)
+            all_dfs.append(df)
+            print(f"   📁 {yyyymm}: {len(df)}行")
+
+    if not all_dfs:
+        print(f"   ⚠️  CSVファイルが見つかりません")
+        return False
+
+    # 全データを結合
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    print(f"   📊 結合後: {len(combined_df)}行")
+
+    # キー毎にmax(source_folder)でフィルタ（最新フォルダを優先）
+    idx = combined_df.groupby(unique_keys)["source_folder"].transform("max") == combined_df["source_folder"]
+    deduped_df = combined_df[idx].drop_duplicates(subset=unique_keys, keep="last").reset_index(drop=True)
+    print(f"   ✨ 重複除去後: {len(deduped_df)}行")
+
+    # 一時CSVに保存
+    temp_csv = f"/tmp/{table_name}_cumulative.csv"
+    deduped_df.to_csv(temp_csv, index=False)
+
+    # GCSにアップロード
+    temp_blob = bucket.blob(f"temp/{table_name}_cumulative.csv")
+    temp_blob.upload_from_filename(temp_csv)
+    gcs_uri = f"gs://{LANDING_BUCKET}/temp/{table_name}_cumulative.csv"
+
+    # BigQueryにロード
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+
+    try:
+        # 既存データを削除（2024/9以降）
+        partition_field = TABLE_CONFIG[table_name]["partition_field"]
+        delete_query = f"""
+        DELETE FROM `{table_id}`
+        WHERE {partition_field} >= '{FISCAL_START_DATE}'
+        """
+        query_job = client.query(delete_query)
+        query_job.result()
+        deleted = query_job.num_dml_affected_rows or 0
+        print(f"   🗑️  既存データ削除: {deleted}行")
+
+        # スキーマを取得してsource_folderカラムを追加（存在しない場合）
+        table = client.get_table(table_id)
+        existing_schema = list(table.schema)
+        has_source_folder = any(f.name == "source_folder" for f in existing_schema)
+
+        if not has_source_folder:
+            new_schema = existing_schema + [bigquery.SchemaField("source_folder", "INTEGER")]
+            table.schema = new_schema
+            client.update_table(table, ["schema"])
+            print(f"   ➕ source_folderカラムを追加")
+
+        # ロード
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            skip_leading_rows=1,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            allow_quoted_newlines=True,
+        )
+        load_job = client.load_table_from_uri(gcs_uri, table_id, job_config=job_config)
+        load_job.result(timeout=300)
+        print(f"   ✅ ロード完了: {load_job.output_rows}行")
+
+        # 一時ファイル削除
+        temp_blob.delete()
+        os.remove(temp_csv)
+
+        # テーブルとカラムの説明を更新
+        update_table_and_column_descriptions(client, table_name)
+
+        return True
+
+    except Exception as e:
+        print(f"   ❌ エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def process_all_tables(yyyymm: str = None):
     """
     全テーブルのBigQueryロード処理
@@ -420,6 +569,10 @@ def process_all_tables(yyyymm: str = None):
     デフォルト動作:
     - 2024/9以降のデータを全て削除
     - GCSのproceed/フォルダにある全年月のCSVをロード
+
+    テーブルタイプ別処理:
+    - 単月型: 各CSVをそのままロード
+    - 累積型: 全CSVを結合してキー毎に最新フォルダを優先
 
     Args:
         yyyymm: 対象年月（省略時は2024/9以降の全年月）
@@ -435,6 +588,10 @@ def process_all_tables(yyyymm: str = None):
     print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
     print("=" * 60)
 
+    # 累積型テーブル一覧を表示
+    print(f"\n累積型テーブル: {', '.join(CUMULATIVE_TABLE_CONFIG.keys())}")
+    print("※ 累積型テーブルはキー毎に最新フォルダのデータを優先")
+
     # BigQueryクライアント作成
     client = create_bigquery_client()
     storage_client = storage.Client()
@@ -444,13 +601,23 @@ def process_all_tables(yyyymm: str = None):
 
     # 各テーブルを処理
     for table_name in TABLE_CONFIG.keys():
-        print(f"\n📊 処理中: {table_name}")
-
         # テーブル存在確認
         if not check_table_exists(client, table_name):
+            print(f"\n📊 処理中: {table_name}")
             print(f"   ❌ テーブルが存在しません: {table_name}")
             error_count += 1
             continue
+
+        # 累積型テーブルは専用処理
+        if table_name in CUMULATIVE_TABLE_CONFIG:
+            if process_cumulative_table(client, storage_client, table_name, target_months):
+                success_count += 1
+            else:
+                error_count += 1
+            continue
+
+        # 単月型テーブルの処理
+        print(f"\n📊 処理中（単月型）: {table_name}")
 
         # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
         delete_all_data_since_fiscal_start(client, table_name)
@@ -490,7 +657,8 @@ def process_all_tables(yyyymm: str = None):
             try:
                 table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
                 table = client.get_table(table_id)
-                print(f"   {table_name}: {table.num_rows:,} 行")
+                cumulative_marker = "（累積型）" if table_name in CUMULATIVE_TABLE_CONFIG else ""
+                print(f"   {table_name}{cumulative_marker}: {table.num_rows:,} 行")
             except:
                 pass
 

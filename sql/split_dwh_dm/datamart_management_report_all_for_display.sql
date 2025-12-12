@@ -33,8 +33,13 @@ SELECT
   display_value,
   -- 百万円単位の表示値（金額項目は元のvalue値を1000000で割る、%項目はそのまま）
   CASE
+    -- 金額項目（千円）は百万円に変換
     WHEN secondary_category IN ('本年実績(千円)', '本年目標(千円)', '前年実績(千円)', '累積本年実績(千円)', '累積本年目標(千円)')
     THEN value / 1000000
+    -- 売上総利益率の(%)項目はそのまま
+    WHEN secondary_category IN ('前年実績(%)', '本年目標(%)', '本年実績(%)')
+    THEN value
+    -- その他の%項目もそのまま
     WHEN secondary_category LIKE '%(%)'
     THEN value
     ELSE NULL

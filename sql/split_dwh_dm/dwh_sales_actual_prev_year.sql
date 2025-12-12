@@ -104,7 +104,7 @@ fukuoka_prev_year_main AS (
     -- 組織識別
     CASE
       WHEN branch_code IN (30, 34) THEN '工事部'
-      WHEN branch_code = 31 THEN '硝子樹脂部'
+      WHEN branch_code IN (31, 32) THEN '硝子樹脂部'  -- 032(福岡樹脂営業)を追加
       ELSE 'その他'
     END AS organization,
     -- 部門別分類(福岡支店の組織構造に基づく)
@@ -114,10 +114,10 @@ fukuoka_prev_year_main AS (
       WHEN branch_code = 30 AND division_code = 21 THEN 'ビルサッシ'
       -- 内装工事(034)
       WHEN branch_code = 34 THEN '内装工事'
-      -- 硝子樹脂部(031)の部門別
+      -- 硝子樹脂部(031, 032)の部門別
       WHEN branch_code = 31 AND division_code IN (10, 11) THEN '硝子'
-      WHEN branch_code = 31 AND division_code IN (30, 31) THEN '樹脂'
-      WHEN branch_code = 31 AND division_code NOT IN (10, 11, 30, 31) THEN '建材'
+      WHEN branch_code = 31 AND division_code NOT IN (10, 11) THEN '建材'  -- 031の樹脂区分(30,31)も建材に含める
+      WHEN branch_code = 32 THEN '樹脂'  -- 032(福岡樹脂営業)全体を樹脂に
       ELSE '未分類'
     END AS detail_category,
     -- 金額(円単位)
@@ -126,7 +126,7 @@ fukuoka_prev_year_main AS (
   FROM
     `data-platform-prod-475201.corporate_data.sales_target_and_achievements`
   WHERE
-    branch_code IN (30, 31, 34)  -- 営業所コード: 030=工事部, 031=硝子樹脂部, 034=内装工事
+    branch_code IN (30, 31, 32, 34)  -- 営業所コード: 030=工事部, 031/032=硝子樹脂部, 034=内装工事
   GROUP BY
     year_month,
     branch,
