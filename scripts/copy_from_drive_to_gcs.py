@@ -14,7 +14,7 @@ import io
 # 定数
 DRIVE_FOLDER_ID = "1bHmrsqE1jdUgWbiPFsiPTymR5IRND4t6"  # 過去データ取り込みフォルダ
 GCS_BUCKET = "data-platform-landing-prod"
-MONTHS = ["202409", "202410", "202411", "202412", "202501", "202502", "202503", "202504", "202505", "202506", "202507", "202508"]
+MONTHS = ["202409", "202410", "202411", "202412", "202501", "202502", "202503", "202504", "202505", "202506", "202507", "202508", "202509", "202510", "202511"]
 
 def get_drive_service():
     """Google Drive APIクライアントを取得"""
@@ -161,7 +161,7 @@ def main():
                 file_data = download_file_from_drive(drive_service, file_id, file_name)
 
                 # GCSにアップロード
-                blob_name = f"raw/{yyyymm}/{file_name}"
+                blob_name = f"google-drive/raw/{yyyymm}/{file_name}"
                 print(f"   GCSにアップロード中...")
                 upload_to_gcs(gcs_client, GCS_BUCKET, blob_name, file_data)
 

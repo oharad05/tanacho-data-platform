@@ -10,7 +10,7 @@ from google.auth import default as google_auth_default
 PROJECT_ID         = os.environ.get("GCP_PROJECT")
 DRIVE_FOLDER_ID    = os.environ["DRIVE_FOLDER_ID"]          # 親フォルダ fileId もしくは 共有ドライブ driveId
 LANDING_BUCKET     = os.environ["LANDING_BUCKET"]           # GCSバケット名
-MAPPING_GCS_PATH   = os.environ.get("MAPPING_GCS_PATH", "config/mapping_files.csv")
+MAPPING_GCS_PATH   = os.environ.get("MAPPING_GCS_PATH", "google-drive/config/mapping_files.csv")
 CLOUD_RUN_ENDPOINT = os.environ.get("CLOUD_RUN_ENDPOINT")   # 任意: 下流通知
 SERVICE_JSON       = os.environ.get("SERVICE_JSON_PATH")    # 任意: 鍵ファイル
 IMPERSONATE_USER   = os.environ.get("IMPERSONATE_USER")     # ドメイン全体の委任: なりすますユーザー
@@ -172,7 +172,7 @@ def _yyyymm_now_utc():
     return dt.datetime.utcnow().strftime("%Y%m")
 
 def _gcs_upload_raw(bucket, bytes_io: io.BytesIO, yyyymm: str, slug: str, out_name: str, content_type: str) -> str:
-    path = f"raw/{yyyymm}/{slug}.xlsx"
+    path = f"google-drive/raw/{yyyymm}/{slug}.xlsx"
     blob = bucket.blob(path)
     blob.content_type = content_type
     blob.upload_from_file(bytes_io)

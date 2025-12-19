@@ -9,5 +9,8 @@ jp_name,en_name,sheet_name
 12_損益5期目標.xlsx,profit_plan_term,東京支店目標103期
 12_損益5期目標.xlsx,profit_plan_term_nagasaki,長崎支店目標103期
 12_損益5期目標.xlsx,profit_plan_term_fukuoka,福岡支店目標103期
+13_[1.売上管理] 得意先売上目標／実績データ.xlsx,customer_sales_target_and_achievements,
+14_工事経過日数一覧表(物件金額).xlsx,construction_progress_days_amount,
+15_工事経過日数一覧表(物件実績最終日)_v001.xlsx,construction_progress_days_final_date,
 16_元帳_雑損失.xlsx,ledger_loss,
 99_部門カテゴリマスタ(部門集計表ヘッダー情報).xlsx,ms_department_category,

@@ -63,9 +63,10 @@ if not validation_logger.handlers:
 PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
-COLUMNS_PATH = "config/columns"
-MAPPING_FILE = "config/mapping/excel_mapping.csv"
-MONETARY_SCALE_FILE = "config/mapping/monetary_scale_conversion.csv"
+COLUMNS_PATH = "google-drive/config/columns"
+MAPPING_FILE = "google-drive/config/mapping/excel_mapping.csv"
+MONETARY_SCALE_FILE = "google-drive/config/mapping/monetary_scale_conversion.csv"
+ZERO_DATE_FILE = "google-drive/config/mapping/zero_date_to_null.csv"
 
 # テーブル定義
 TABLE_CONFIG = {
@@ -543,6 +544,95 @@ def apply_monetary_scale_conversion(
         traceback.print_exc()
         return df
 
+
+def load_zero_date_config(storage_client: storage.Client) -> pd.DataFrame:
+    """GCSからゼロ日付変換設定を読み込み"""
+    try:
+        bucket = storage_client.bucket(LANDING_BUCKET)
+        blob = bucket.blob(ZERO_DATE_FILE)
+
+        if not blob.exists():
+            print(f"⚠️  ゼロ日付変換設定ファイルが見つかりません: gs://{LANDING_BUCKET}/{ZERO_DATE_FILE}")
+            return pd.DataFrame()
+
+        csv_data = blob.download_as_bytes()
+        df = pd.read_csv(io.BytesIO(csv_data))
+        return df
+    except Exception as e:
+        print(f"⚠️  ゼロ日付変換設定の読み込みエラー: {e}")
+        return pd.DataFrame()
+
+
+def apply_zero_date_to_null_conversion(
+    df: pd.DataFrame,
+    table_name: str,
+    storage_client: storage.Client
+) -> pd.DataFrame:
+    """
+    ゼロ日付（0000/00/00）をnullに変換
+
+    Args:
+        df: 変換対象のDataFrame（英語カラム名に変換済み）
+        table_name: テーブル名
+        storage_client: Storage Client
+
+    Returns:
+        変換後のDataFrame
+    """
+    try:
+        # ゼロ日付変換設定を読み込み
+        config_df = load_zero_date_config(storage_client)
+
+        if config_df.empty:
+            return df
+
+        # 対象テーブルの設定を取得
+        target_config = config_df[config_df['file_name'] == table_name]
+
+        if target_config.empty:
+            return df
+
+        df = df.copy()
+
+        # ゼロ日付パターン（様々な形式に対応）
+        zero_date_patterns = [
+            '0000/00/00',
+            '0000-00-00',
+            '0000/0/0',
+            '0000-0-0',
+        ]
+
+        for _, config in target_config.iterrows():
+            column_name = config['condition_column_name']
+
+            if column_name not in df.columns:
+                print(f"⚠️  対象カラムが存在しません: {column_name}")
+                continue
+
+            # 変換前のnull以外の件数を記録
+            non_null_before = df[column_name].notna().sum()
+
+            # ゼロ日付をnullに変換
+            for pattern in zero_date_patterns:
+                mask = df[column_name].astype(str).str.strip() == pattern
+                if mask.any():
+                    df.loc[mask, column_name] = None
+
+            # 変換後のnull以外の件数
+            non_null_after = df[column_name].notna().sum()
+            converted_count = non_null_before - non_null_after
+
+            if converted_count > 0:
+                print(f"   🔄 {column_name}: {converted_count}件のゼロ日付をnullに変換")
+
+        return df
+
+    except Exception as e:
+        print(f"⚠️  ゼロ日付変換エラー: {e}")
+        traceback.print_exc()
+        return df
+
+
 def transform_excel_to_csv(
     storage_client: storage.Client,
     table_name: str,
@@ -554,8 +644,8 @@ def transform_excel_to_csv(
 
         bucket = storage_client.bucket(LANDING_BUCKET)
 
-        # raw/ から読み込み
-        raw_path = f"raw/{yyyymm}/{table_name}.xlsx"
+        # google-drive/raw/ から読み込み
+        raw_path = f"google-drive/raw/{yyyymm}/{table_name}.xlsx"
         raw_blob = bucket.blob(raw_path)
 
         if not raw_blob.exists():
@@ -624,13 +714,16 @@ def transform_excel_to_csv(
         # 金額単位変換（カラム名変換後に実行）
         df = apply_monetary_scale_conversion(df, table_name, storage_client)
 
+        # ゼロ日付をnullに変換（金額変換後に実行）
+        df = apply_zero_date_to_null_conversion(df, table_name, storage_client)
+
         # CSV出力
         csv_buffer = io.BytesIO()
         df.to_csv(csv_buffer, index=False, encoding='utf-8')
         csv_buffer.seek(0)
 
-        # proceed/ に保存
-        proceed_path = f"proceed/{yyyymm}/{table_name}.csv"
+        # google-drive/proceed/ に保存
+        proceed_path = f"google-drive/proceed/{yyyymm}/{table_name}.csv"
         proceed_blob = bucket.blob(proceed_path)
         proceed_blob.upload_from_file(csv_buffer, content_type='text/csv')
 
@@ -795,7 +888,7 @@ def load_csv_to_bigquery(
 ) -> bool:
     """CSVファイルをBigQueryにロード"""
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
-    gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{yyyymm}/{table_name}.csv"
+    gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/proceed/{yyyymm}/{table_name}.csv"
 
     try:
         job_config = bigquery.LoadJobConfig(
@@ -846,16 +939,16 @@ def load_csv_to_bigquery(
 FISCAL_START_YYYYMM = "202409"  # 2024年9月
 
 def get_available_months_from_gcs(storage_client: storage.Client) -> list:
-    """GCSのproceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
+    """GCSのgoogle-drive/proceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
     bucket = storage_client.bucket(LANDING_BUCKET)
-    blobs = bucket.list_blobs(prefix="proceed/")
+    blobs = bucket.list_blobs(prefix="google-drive/proceed/")
 
     months = set()
     for blob in blobs:
-        # proceed/202409/xxx.csv のような形式からyyyymmを抽出
+        # google-drive/proceed/202409/xxx.csv のような形式からyyyymmを抽出
         parts = blob.name.split("/")
-        if len(parts) >= 2 and parts[1].isdigit() and len(parts[1]) == 6:
-            yyyymm = parts[1]
+        if len(parts) >= 3 and parts[2].isdigit() and len(parts[2]) == 6:
+            yyyymm = parts[2]
             # 2024/9以降のみ対象
             if yyyymm >= FISCAL_START_YYYYMM:
                 months.add(yyyymm)

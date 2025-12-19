@@ -1,0 +1,4 @@
+jp_name,en_name,type
+物件No,property_number,STRING
+物件データ区分,property_data_classification,INT64
+物件最終請求売上日,final_billing_sales_date,DATE

@@ -1,0 +1,5 @@
+file_name,condition_column_name
+construction_progress_days_amount,contract_date
+construction_progress_days_amount,construction_start_date
+construction_progress_days_amount,construction_end_date
+construction_progress_days_amount,completion_date

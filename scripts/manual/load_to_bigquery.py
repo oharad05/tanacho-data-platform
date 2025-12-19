@@ -28,8 +28,29 @@ from google.cloud.exceptions import GoogleCloudError
 PROJECT_ID = "data-platform-prod-475201"
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = "data-platform-landing-prod"
-MAPPING_FILE = "config/mapping/excel_mapping.csv"  # Note: このファイルは現在使用されていない可能性があります
-COLUMNS_PATH = "config/columns"
+MAPPING_FILE = "google-drive/config/mapping/excel_mapping.csv"  # Note: このファイルは現在使用されていない可能性があります
+COLUMNS_PATH = "google-drive/config/columns"
+
+# スプレッドシート連携用設定
+SPREADSHEET_PROCEED_PATH = "spreadsheet/proceed"
+SPREADSHEET_COLUMNS_PATH = "spreadsheet/config/columns"
+SPREADSHEET_TABLE_PREFIX = "ss_"
+
+# スプレッドシートテーブル設定（パーティションなし）
+SPREADSHEET_TABLE_CONFIG = {
+    "gs_sales_profit": {
+        "description": "GS売上利益",
+    },
+    "inventory_advance_tokyo": {
+        "description": "東京在庫前払",
+    },
+    "inventory_advance_nagasaki": {
+        "description": "長崎在庫前払",
+    },
+    "inventory_advance_fukuoka": {
+        "description": "福岡在庫前払",
+    },
+}
 
 # 期首（データ開始日）
 FISCAL_START_YYYYMM = "202409"  # 2024年9月
@@ -131,17 +152,17 @@ def create_bigquery_client():
     return client
 
 def get_available_months_from_gcs() -> list:
-    """GCSのproceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
+    """GCSのgoogle-drive/proceed/フォルダから利用可能な年月リストを取得（2024/9以降）"""
     storage_client = storage.Client()
     bucket = storage_client.bucket(LANDING_BUCKET)
-    blobs = bucket.list_blobs(prefix="proceed/")
+    blobs = bucket.list_blobs(prefix="google-drive/proceed/")
 
     months = set()
     for blob in blobs:
-        # proceed/202409/xxx.csv のような形式からyyyymmを抽出
+        # google-drive/proceed/202409/xxx.csv のような形式からyyyymmを抽出
         parts = blob.name.split("/")
-        if len(parts) >= 2 and parts[1].isdigit() and len(parts[1]) == 6:
-            yyyymm = parts[1]
+        if len(parts) >= 3 and parts[2].isdigit() and len(parts[2]) == 6:
+            yyyymm = parts[2]
             # 2024/9以降のみ対象
             if yyyymm >= FISCAL_START_YYYYMM:
                 months.add(yyyymm)
@@ -479,7 +500,7 @@ def process_cumulative_table(
     # 全月のCSVを読み込み、source_folderカラムを追加
     all_dfs = []
     for yyyymm in target_months:
-        blob = bucket.blob(f"proceed/{yyyymm}/{table_name}.csv")
+        blob = bucket.blob(f"google-drive/proceed/{yyyymm}/{table_name}.csv")
         if blob.exists():
             csv_content = blob.download_as_string().decode("utf-8")
             df = pd.read_csv(io.StringIO(csv_content))
@@ -505,9 +526,9 @@ def process_cumulative_table(
     deduped_df.to_csv(temp_csv, index=False)
 
     # GCSにアップロード
-    temp_blob = bucket.blob(f"temp/{table_name}_cumulative.csv")
+    temp_blob = bucket.blob(f"google-drive/temp/{table_name}_cumulative.csv")
     temp_blob.upload_from_filename(temp_csv)
-    gcs_uri = f"gs://{LANDING_BUCKET}/temp/{table_name}_cumulative.csv"
+    gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/temp/{table_name}_cumulative.csv"
 
     # BigQueryにロード
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
@@ -560,6 +581,213 @@ def process_cumulative_table(
         import traceback
         traceback.print_exc()
         return False
+
+
+def get_spreadsheet_files_from_gcs() -> List[str]:
+    """GCSのspreadsheet/proceed/フォルダから利用可能なテーブル名リストを取得"""
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(LANDING_BUCKET)
+    blobs = bucket.list_blobs(prefix=f"{SPREADSHEET_PROCEED_PATH}/")
+
+    tables = []
+    for blob in blobs:
+        # spreadsheet/proceed/xxx.csv の形式からテーブル名を抽出
+        if blob.name.endswith(".csv"):
+            table_name = blob.name.split("/")[-1].replace(".csv", "")
+            if table_name in SPREADSHEET_TABLE_CONFIG:
+                tables.append(table_name)
+
+    return sorted(list(set(tables)))
+
+
+def load_spreadsheet_column_descriptions(table_name: str) -> Dict[str, str]:
+    """
+    GCSからスプレッドシートテーブルのカラム説明を読み込み
+
+    Args:
+        table_name: テーブル名（プレフィックスなし）
+
+    Returns:
+        {英語カラム名: 日本語カラム名}の辞書
+    """
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(LANDING_BUCKET)
+    blob_path = f"{SPREADSHEET_COLUMNS_PATH}/{table_name}.csv"
+    blob = bucket.blob(blob_path)
+
+    if not blob.exists():
+        print(f"   ⚠️  カラム定義ファイルが見つかりません: gs://{LANDING_BUCKET}/{blob_path}")
+        return {}
+
+    try:
+        csv_content = blob.download_as_string().decode("utf-8")
+        df = pd.read_csv(io.StringIO(csv_content))
+        descriptions = {}
+        for _, row in df.iterrows():
+            en_name = row['en_name']
+            jp_name = row['jp_name']
+            descriptions[en_name] = jp_name
+        return descriptions
+    except Exception as e:
+        print(f"   ⚠️  カラム定義の読み込みエラー: {e}")
+        return {}
+
+
+def load_spreadsheet_to_bigquery(
+    client: bigquery.Client,
+    table_name: str,
+    gcs_uri: str
+) -> bool:
+    """
+    スプレッドシートCSVをBigQueryにロード（WRITE_TRUNCATE）
+
+    Args:
+        client: BigQueryクライアント
+        table_name: テーブル名（プレフィックスなし）
+        gcs_uri: GCS上のCSVファイルURI
+
+    Returns:
+        成功時True
+    """
+    bq_table_name = f"{SPREADSHEET_TABLE_PREFIX}{table_name}"
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{bq_table_name}"
+
+    try:
+        # ジョブ設定（全データ洗い替え）
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            skip_leading_rows=1,
+            autodetect=True,  # スキーマ自動検出
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # 全データ洗い替え
+            allow_quoted_newlines=True,
+        )
+
+        # ロードジョブの実行
+        load_job = client.load_table_from_uri(
+            gcs_uri,
+            table_id,
+            job_config=job_config
+        )
+
+        print(f"   ⏳ ロード開始: {bq_table_name} (Job ID: {load_job.job_id})")
+
+        # ジョブの完了を待機
+        load_job.result(timeout=300)
+
+        # ロード結果の確認
+        destination_table = client.get_table(table_id)
+        print(f"   ✅ ロード完了: {load_job.output_rows} 行")
+
+        # テーブルの説明を設定
+        config = SPREADSHEET_TABLE_CONFIG.get(table_name, {})
+        table_description = config.get("description", "")
+        if table_description:
+            destination_table.description = table_description
+            client.update_table(destination_table, ["description"])
+
+        # カラムの説明を設定
+        column_descriptions = load_spreadsheet_column_descriptions(table_name)
+        if column_descriptions:
+            new_schema = []
+            for field in destination_table.schema:
+                description = column_descriptions.get(field.name, field.description)
+                new_field = bigquery.SchemaField(
+                    name=field.name,
+                    field_type=field.field_type,
+                    mode=field.mode,
+                    description=description,
+                    fields=field.fields
+                )
+                new_schema.append(new_field)
+            destination_table.schema = new_schema
+            client.update_table(destination_table, ["schema"])
+            print(f"   📝 {len(column_descriptions)}個のカラム説明を設定")
+
+        return True
+
+    except GoogleCloudError as e:
+        print(f"   ❌ ロードエラー: {e}")
+        if hasattr(e, 'errors') and e.errors:
+            for error in e.errors:
+                print(f"      詳細: {error}")
+        return False
+    except Exception as e:
+        print(f"   ❌ 予期しないエラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def process_spreadsheet_tables() -> Dict[str, int]:
+    """
+    スプレッドシートテーブルのBigQueryロード処理
+
+    Returns:
+        {"success": 成功数, "error": エラー数, "skipped": スキップ数}
+    """
+    print("\n" + "=" * 60)
+    print("スプレッドシート → BigQuery ロード処理")
+    print(f"GCSパス: gs://{LANDING_BUCKET}/{SPREADSHEET_PROCEED_PATH}/")
+    print(f"BigQueryプレフィックス: {SPREADSHEET_TABLE_PREFIX}")
+    print("=" * 60)
+
+    # GCSから利用可能なテーブル一覧を取得
+    available_tables = get_spreadsheet_files_from_gcs()
+
+    if not available_tables:
+        print("\n⚠️  スプレッドシートCSVファイルが見つかりません")
+        print(f"   パス: gs://{LANDING_BUCKET}/{SPREADSHEET_PROCEED_PATH}/")
+        return {"success": 0, "error": 0, "skipped": len(SPREADSHEET_TABLE_CONFIG)}
+
+    print(f"\n利用可能なテーブル: {', '.join(available_tables)}")
+
+    client = create_bigquery_client()
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(LANDING_BUCKET)
+
+    success_count = 0
+    error_count = 0
+    skipped_count = 0
+
+    for table_name, config in SPREADSHEET_TABLE_CONFIG.items():
+        print(f"\n📊 処理中: {SPREADSHEET_TABLE_PREFIX}{table_name}")
+
+        # CSVファイルの存在確認
+        blob_path = f"{SPREADSHEET_PROCEED_PATH}/{table_name}.csv"
+        blob = bucket.blob(blob_path)
+
+        if not blob.exists():
+            print(f"   ⚠️  CSVファイルが存在しません: gs://{LANDING_BUCKET}/{blob_path}")
+            skipped_count += 1
+            continue
+
+        gcs_uri = f"gs://{LANDING_BUCKET}/{blob_path}"
+
+        if load_spreadsheet_to_bigquery(client, table_name, gcs_uri):
+            success_count += 1
+        else:
+            error_count += 1
+
+    # 結果サマリー
+    print("\n" + "-" * 40)
+    print(f"スプレッドシートテーブル処理完了:")
+    print(f"  成功: {success_count}")
+    print(f"  エラー: {error_count}")
+    print(f"  スキップ: {skipped_count}")
+
+    # 統計情報の表示
+    if success_count > 0:
+        print("\n📈 スプレッドシートテーブル統計:")
+        for table_name in SPREADSHEET_TABLE_CONFIG.keys():
+            try:
+                bq_table_name = f"{SPREADSHEET_TABLE_PREFIX}{table_name}"
+                table_id = f"{PROJECT_ID}.{DATASET_ID}.{bq_table_name}"
+                table = client.get_table(table_id)
+                print(f"   {bq_table_name}: {table.num_rows:,} 行")
+            except Exception:
+                pass
+
+    return {"success": success_count, "error": error_count, "skipped": skipped_count}
 
 
 def process_all_tables(yyyymm: str = None):
@@ -627,8 +855,8 @@ def process_all_tables(yyyymm: str = None):
         bucket = storage_client.bucket(LANDING_BUCKET)
 
         for month in target_months:
-            gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{month}/{table_name}.csv"
-            blob_name = f"proceed/{month}/{table_name}.csv"
+            gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/proceed/{month}/{table_name}.csv"
+            blob_name = f"google-drive/proceed/{month}/{table_name}.csv"
             blob = bucket.blob(blob_name)
 
             if not blob.exists():
@@ -661,6 +889,10 @@ def process_all_tables(yyyymm: str = None):
                 print(f"   {table_name}{cumulative_marker}: {table.num_rows:,} 行")
             except:
                 pass
+
+    # スプレッドシートテーブルの処理
+    process_spreadsheet_tables()
+
 
 def verify_load(table_name: str, yyyymm: str):
     """
@@ -707,13 +939,22 @@ if __name__ == "__main__":
         process_all_tables()
     elif sys.argv[1] == "--help" or sys.argv[1] == "-h":
         print("使用方法:")
-        print("  python load_to_bigquery.py              # デフォルト: 2024/9以降の全データをREPLACE")
+        print("  python load_to_bigquery.py              # デフォルト: 全データをREPLACE（Drive + Spreadsheet）")
         print("  python load_to_bigquery.py YYYYMM       # 特定月のみロード（既存データに追加）")
+        print("  python load_to_bigquery.py --spreadsheet # スプレッドシートテーブルのみロード")
         print("")
         print("デフォルト動作:")
-        print("  - 2024/9以降のデータを全て削除")
-        print("  - GCSのproceed/フォルダにある全年月のCSVをロード")
+        print("  - 2024/9以降のDriveデータを全て削除して再ロード")
+        print("  - スプレッドシートテーブルを全て洗い替え")
+        print("")
+        print("スプレッドシートテーブル:")
+        for table_name, config in SPREADSHEET_TABLE_CONFIG.items():
+            print(f"  - {SPREADSHEET_TABLE_PREFIX}{table_name}: {config.get('description', '')}")
         sys.exit(0)
+    elif sys.argv[1] == "--spreadsheet":
+        # スプレッドシートテーブルのみロード
+        print("スプレッドシートモード: スプレッドシートテーブルのみロード")
+        process_spreadsheet_tables()
     else:
         # 特定年月のみロード（追加モード）
         yyyymm = sys.argv[1]
@@ -740,9 +981,9 @@ if __name__ == "__main__":
                 print(f"   ❌ テーブルが存在しません: {table_name}")
                 continue
 
-            gcs_uri = f"gs://{LANDING_BUCKET}/proceed/{yyyymm}/{table_name}.csv"
+            gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/proceed/{yyyymm}/{table_name}.csv"
             bucket = storage_client.bucket(LANDING_BUCKET)
-            blob = bucket.blob(f"proceed/{yyyymm}/{table_name}.csv")
+            blob = bucket.blob(f"google-drive/proceed/{yyyymm}/{table_name}.csv")
 
             if not blob.exists():
                 print(f"   ⚠️  CSVファイルが存在しません: {gcs_uri}")

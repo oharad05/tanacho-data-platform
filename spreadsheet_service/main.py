@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-スプレッドシート → GCS → BigQuery 連携サービス (Cloud Run)
+スプレッドシート → GCS 連携サービス (Cloud Run)
 
 共有ドライブの「手入力用」フォルダからスプレッドシートを自動検出し、
-指定シートのデータをGCS経由でBigQueryに連携します。
+指定シートのデータをGCSに連携します。
 
-- GCSパス: gs://data-platform-landing-prod/spreadsheet/
-- BQテーブル: corporate_data.ss_*
+- GCSパス:
+  - raw: gs://data-platform-landing-prod/spreadsheet/raw/
+  - proceed: gs://data-platform-landing-prod/spreadsheet/proceed/
 
 バリデーション機能:
 - カラム不整合チェック
 - レコード0件チェック
 
 結果はGoogle Cloud Loggingに出力され、後からSlack等に連携可能。
+BigQueryへのロードはload_to_bigquery.pyで行います。
 
 エンドポイント:
     POST /sync - 全スプレッドシートを同期
@@ -30,7 +32,7 @@ from typing import Dict, List, Optional, Any
 import pandas as pd
 from flask import Flask, request, jsonify
 from googleapiclient.discovery import build
-from google.cloud import storage, bigquery
+from google.cloud import storage
 from google.auth import default as google_auth_default
 from google.oauth2 import service_account
 
@@ -41,7 +43,7 @@ from google.oauth2 import service_account
 VALIDATION_ENABLED = os.environ.get("VALIDATION_ENABLED", "true").lower() == "true"
 
 # バリデーションログ用のlogger
-validation_logger = logging.getLogger("spreadsheet-to-bq-validation")
+validation_logger = logging.getLogger("spreadsheet-to-gcs-validation")
 if not validation_logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(message)s'))
@@ -61,8 +63,9 @@ SERVICE_JSON = os.environ.get("SERVICE_JSON_PATH")        # サービスアカ�
 IMPERSONATE_USER = os.environ.get("IMPERSONATE_USER")     # なりすますユーザーのメールアドレス
 
 GCS_BASE_PATH = "spreadsheet"  # Drive連携の /raw/, /proceed/ とは完全分離
-BQ_DATASET = "corporate_data"
-TABLE_PREFIX = "ss_"  # 既存テーブルと区別するプレフィックス
+GCS_RAW_PATH = f"{GCS_BASE_PATH}/raw"
+GCS_PROCEED_PATH = f"{GCS_BASE_PATH}/proceed"
+TABLE_PREFIX = "ss_"  # BigQueryテーブル名のプレフィックス（load_to_bigquery.pyで使用）
 
 # スコープ: 管理コンソールで登録したものと一致させる
 SCOPES = [
@@ -104,7 +107,7 @@ def log_validation_result(result: Dict[str, Any]) -> None:
         "severity": "ERROR" if result.get("status") == "ERROR" else "INFO",
         "message": _format_validation_message(result),
         "labels": {
-            "service": "spreadsheet-to-bq",
+            "service": "spreadsheet-to-gcs",
             "table_name": result.get("table_name", "unknown"),
             "validation_type": result.get("validation_type", "unknown"),
             "status": result.get("status", "unknown")
@@ -159,7 +162,7 @@ def validate_columns_and_rows(
     if not raw_data:
         return {
             "timestamp": datetime.utcnow().isoformat() + "Z",
-            "service": "spreadsheet-to-bq",
+            "service": "spreadsheet-to-gcs",
             "validation_type": "column_and_row_check",
             "table_name": table_name,
             "sheet_name": sheet_name,
@@ -198,7 +201,7 @@ def validate_columns_and_rows(
 
     result = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "service": "spreadsheet-to-bq",
+        "service": "spreadsheet-to-gcs",
         "validation_type": "column_and_row_check",
         "table_name": table_name,
         "sheet_name": sheet_name,
@@ -381,62 +384,38 @@ def transform_data(raw_data: List[List], columns_mapping: pd.DataFrame) -> pd.Da
 
 
 def save_to_gcs(df: pd.DataFrame, table_name: str) -> str:
-    """DataFrameをCSVとしてGCSに保存"""
+    """DataFrameをCSVとしてGCS raw/に保存"""
     client = storage.Client(project=PROJECT_ID)
     bucket = client.bucket(LANDING_BUCKET)
 
-    gcs_path = f"{GCS_BASE_PATH}/raw/{table_name}.csv"
+    gcs_path = f"{GCS_RAW_PATH}/{table_name}.csv"
     blob = bucket.blob(gcs_path)
 
     csv_content = df.to_csv(index=False)
     blob.upload_from_string(csv_content, content_type='text/csv')
 
     full_path = f"gs://{LANDING_BUCKET}/{gcs_path}"
-    print(f"[INFO] GCS保存完了: {full_path}")
+    print(f"[INFO] GCS raw保存完了: {full_path}")
     return full_path
 
 
-def load_to_bigquery(gcs_path: str, table_name: str, columns_mapping: pd.DataFrame):
-    """GCSからBigQueryにロード（洗い替え）"""
-    client = bigquery.Client(project=PROJECT_ID)
+def copy_to_proceed(table_name: str) -> str:
+    """raw/からproceed/にファイルをコピー"""
+    client = storage.Client(project=PROJECT_ID)
+    bucket = client.bucket(LANDING_BUCKET)
 
-    full_table_id = f"{PROJECT_ID}.{BQ_DATASET}.{TABLE_PREFIX}{table_name}"
+    raw_path = f"{GCS_RAW_PATH}/{table_name}.csv"
+    proceed_path = f"{GCS_PROCEED_PATH}/{table_name}.csv"
 
-    # スキーマ生成
-    type_mapping = {
-        'STRING': bigquery.enums.SqlTypeNames.STRING,
-        'INTEGER': bigquery.enums.SqlTypeNames.INTEGER,
-        'FLOAT': bigquery.enums.SqlTypeNames.FLOAT64,
-        'DATE': bigquery.enums.SqlTypeNames.DATE,
-        'TIMESTAMP': bigquery.enums.SqlTypeNames.TIMESTAMP,
-    }
+    raw_blob = bucket.blob(raw_path)
+    proceed_blob = bucket.blob(proceed_path)
 
-    schema = []
-    for _, row in columns_mapping.iterrows():
-        bq_type = type_mapping.get(row['data_type'], bigquery.enums.SqlTypeNames.STRING)
-        schema.append(bigquery.SchemaField(row['en_name'], bq_type))
+    # raw/のデータをproceed/にコピー
+    proceed_blob.rewrite(raw_blob)
 
-    # ロードジョブ設定
-    job_config = bigquery.LoadJobConfig(
-        schema=schema,
-        skip_leading_rows=1,
-        source_format=bigquery.SourceFormat.CSV,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # 洗い替え
-    )
-
-    # ロード実行
-    load_job = client.load_table_from_uri(
-        gcs_path,
-        full_table_id,
-        job_config=job_config
-    )
-
-    load_job.result()  # 完了待ち
-
-    # 結果確認
-    table = client.get_table(full_table_id)
-    print(f"[INFO] BigQueryロード完了: {full_table_id} ({table.num_rows}行)")
-    return table.num_rows
+    full_path = f"gs://{LANDING_BUCKET}/{proceed_path}"
+    print(f"[INFO] GCS proceed保存完了: {full_path}")
+    return full_path
 
 
 def sync_all_spreadsheets() -> dict:
@@ -511,16 +490,17 @@ def sync_all_spreadsheets() -> dict:
                     })
                     continue
 
-                # 6. GCSに保存
-                gcs_path = save_to_gcs(df, table_name)
+                # 6. GCS raw/に保存
+                raw_path = save_to_gcs(df, table_name)
 
-                # 7. BigQueryにロード
-                row_count = load_to_bigquery(gcs_path, table_name, columns_mapping)
+                # 7. raw/からproceed/にコピー
+                proceed_path = copy_to_proceed(table_name)
 
                 results["success"].append({
                     "table": f"{TABLE_PREFIX}{table_name}",
-                    "rows": row_count,
-                    "gcs_path": gcs_path,
+                    "rows": len(df),
+                    "raw_path": raw_path,
+                    "proceed_path": proceed_path,
                     "source": ss_name
                 })
                 print(f"[INFO] 完了: {table_name}")
@@ -542,14 +522,14 @@ def sync_all_spreadsheets() -> dict:
 @app.route('/health', methods=['GET'])
 def health():
     """ヘルスチェック"""
-    return jsonify({"status": "healthy", "service": "spreadsheet-to-bq"})
+    return jsonify({"status": "healthy", "service": "spreadsheet-to-gcs"})
 
 
 @app.route('/sync', methods=['POST'])
 def sync():
     """全スプレッドシートを同期"""
     print("=" * 60)
-    print("スプレッドシート → BigQuery 連携開始")
+    print("スプレッドシート → GCS 連携開始")
     print(f"実行日時: {datetime.now().isoformat()}")
     print(f"対象フォルダID: {MANUAL_INPUT_FOLDER_ID}")
     print("=" * 60)
@@ -558,7 +538,7 @@ def sync():
         results = sync_all_spreadsheets()
 
         print("\n" + "=" * 60)
-        print("スプレッドシート → BigQuery 連携完了")
+        print("スプレッドシート → GCS 連携完了")
         print(f"成功: {len(results['success'])}件")
         print(f"失敗: {len(results['failed'])}件")
         print(f"スキップ: {len(results['skipped'])}件")
@@ -584,15 +564,15 @@ def root():
         # Pub/Subからのトリガーの場合はsyncを実行
         return sync()
     return jsonify({
-        "service": "spreadsheet-to-bq",
+        "service": "spreadsheet-to-gcs",
         "endpoints": {
             "POST /sync": "全スプレッドシートを同期",
             "GET /health": "ヘルスチェック"
         },
         "config": {
             "manual_input_folder_id": MANUAL_INPUT_FOLDER_ID,
-            "gcs_base_path": f"gs://{LANDING_BUCKET}/{GCS_BASE_PATH}/",
-            "bq_dataset": BQ_DATASET,
+            "gcs_raw_path": f"gs://{LANDING_BUCKET}/{GCS_RAW_PATH}/",
+            "gcs_proceed_path": f"gs://{LANDING_BUCKET}/{GCS_PROCEED_PATH}/",
             "table_prefix": TABLE_PREFIX
         }
     })

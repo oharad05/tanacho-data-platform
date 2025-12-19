@@ -20,7 +20,10 @@ PROJECT_ID = "data-platform-prod-475201"
 LANDING_BUCKET = "data-platform-landing-prod"
 COLUMNS_PATH = "config/columns"  # ローカルのカラム定義ファイルパス
 MONETARY_SCALE_FILE = "config/mapping/monetary_scale_conversion.csv"  # 金額変換設定ファイル
+ZERO_DATE_FILE = "config/mapping/zero_date_to_null.csv"  # ゼロ日付変換設定ファイル
 FILE_NAME_MAPPING_FILE = "config/mapping/mapping_files.csv"  # ファイル名マッピングファイル
+GCS_RAW_PREFIX = "google-drive/raw"  # GCS rawパス
+GCS_PROCEED_PREFIX = "google-drive/proceed"  # GCS proceedパス
 
 def load_column_mapping(table_name: str) -> Dict[str, Dict[str, str]]:
     """
@@ -307,6 +310,87 @@ def apply_monetary_scale_conversion(df: pd.DataFrame, table_name: str) -> pd.Dat
         traceback.print_exc()
         return df
 
+
+def load_zero_date_config() -> pd.DataFrame:
+    """ゼロ日付変換設定を読み込み"""
+    if not os.path.exists(ZERO_DATE_FILE):
+        print(f"⚠️  ゼロ日付変換設定ファイルが見つかりません: {ZERO_DATE_FILE}")
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(ZERO_DATE_FILE)
+        return df
+    except Exception as e:
+        print(f"⚠️  ゼロ日付変換設定の読み込みエラー: {e}")
+        return pd.DataFrame()
+
+
+def apply_zero_date_to_null_conversion(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """
+    ゼロ日付（0000/00/00）をnullに変換
+
+    Args:
+        df: 変換対象のDataFrame（英語カラム名に変換済み）
+        table_name: テーブル名
+
+    Returns:
+        変換後のDataFrame
+    """
+    try:
+        # ゼロ日付変換設定を読み込み
+        config_df = load_zero_date_config()
+
+        if config_df.empty:
+            return df
+
+        # 対象テーブルの設定を取得
+        target_config = config_df[config_df['file_name'] == table_name]
+
+        if target_config.empty:
+            return df
+
+        df = df.copy()
+
+        # ゼロ日付パターン（様々な形式に対応）
+        zero_date_patterns = [
+            '0000/00/00',
+            '0000-00-00',
+            '0000/0/0',
+            '0000-0-0',
+        ]
+
+        for _, config in target_config.iterrows():
+            column_name = config['condition_column_name']
+
+            if column_name not in df.columns:
+                print(f"⚠️  対象カラムが存在しません: {column_name}")
+                continue
+
+            # 変換前のnull以外の件数を記録
+            non_null_before = df[column_name].notna().sum()
+
+            # ゼロ日付をnullに変換
+            for pattern in zero_date_patterns:
+                mask = df[column_name].astype(str).str.strip() == pattern
+                if mask.any():
+                    df.loc[mask, column_name] = None
+
+            # 変換後のnull以外の件数
+            non_null_after = df[column_name].notna().sum()
+            converted_count = non_null_before - non_null_after
+
+            if converted_count > 0:
+                print(f"   🔄 {column_name}: {converted_count}件のゼロ日付をnullに変換")
+
+        return df
+
+    except Exception as e:
+        print(f"⚠️  ゼロ日付変換エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return df
+
+
 def transform_excel_to_csv(
     input_path: str,
     output_path: str,
@@ -373,6 +457,9 @@ def transform_excel_to_csv(
         # 金額単位変換（カラム名変換後に実行）
         df = apply_monetary_scale_conversion(df, table_name)
 
+        # ゼロ日付をnullに変換（金額変換後に実行）
+        df = apply_zero_date_to_null_conversion(df, table_name)
+
         # CSV出力
         df.to_csv(output_path, index=False, encoding='utf-8')
         print(f"   出力: {output_path}")
@@ -386,6 +473,52 @@ def transform_excel_to_csv(
         traceback.print_exc()
         return False
 
+def find_raw_file(bucket, jp_name: str, yyyymm: str):
+    """
+    日本語ファイル名からGCS上のrawファイルを検索
+
+    部門集計表のような月別ファイル名も対応
+    例: 6_部門集計表_202509.xlsx → 6_部門集計表_{yyyymm}.xlsx
+
+    Args:
+        bucket: GCSバケット
+        jp_name: 日本語ファイル名（マッピングファイルから）
+        yyyymm: 対象年月
+
+    Returns:
+        見つかったBlobとパス、見つからない場合はNone
+    """
+    # 直接検索
+    raw_path = f"{GCS_RAW_PREFIX}/{yyyymm}/{jp_name}"
+    blob = bucket.blob(raw_path)
+    if blob.exists():
+        return blob, raw_path
+
+    # 月別ファイル名対応（例: 6_部門集計表_202509.xlsx）
+    if '_202' in jp_name:
+        # マッピングの月を対象月に置換
+        import re
+        pattern = r'_\d{6}\.xlsx$'
+        new_jp_name = re.sub(pattern, f'_{yyyymm}.xlsx', jp_name)
+        raw_path = f"{GCS_RAW_PREFIX}/{yyyymm}/{new_jp_name}"
+        blob = bucket.blob(raw_path)
+        if blob.exists():
+            return blob, raw_path
+
+    # ファイル一覧から部分一致で検索
+    prefix = f"{GCS_RAW_PREFIX}/{yyyymm}/"
+    blobs = list(bucket.list_blobs(prefix=prefix))
+
+    # 日本語ファイル名のベース部分（番号と名前）でマッチング
+    jp_base = jp_name.split('_')[0] + '_' + jp_name.split('_')[1].split('.')[0] if '_' in jp_name else jp_name
+
+    for b in blobs:
+        blob_name = b.name.replace(prefix, '')
+        if jp_base in blob_name:
+            return b, b.name
+
+    return None, None
+
 def process_gcs_files(yyyymm: str):
     """
     GCS上のraw/ファイルを変換してproceed/に保存
@@ -397,6 +530,8 @@ def process_gcs_files(yyyymm: str):
     print(f"raw/ → proceed/ 変換処理")
     print(f"対象年月: {yyyymm}")
     print(f"バケット: {LANDING_BUCKET}")
+    print(f"入力: gs://{LANDING_BUCKET}/{GCS_RAW_PREFIX}/{yyyymm}/")
+    print(f"出力: gs://{LANDING_BUCKET}/{GCS_PROCEED_PREFIX}/{yyyymm}/")
     print("=" * 60)
 
     # GCSクライアント初期化
@@ -426,6 +561,7 @@ def process_gcs_files(yyyymm: str):
 
     success_count = 0
     error_count = 0
+    skipped_count = 0
 
     for table_name in tables:
         try:
@@ -435,36 +571,41 @@ def process_gcs_files(yyyymm: str):
             if table_name in file_name_mapping:
                 jp_name, sheet_name = file_name_mapping[table_name]
 
-            # GCSパス（英語ファイル名を使用 - sync_drive_to_gcs.pyが英語スラグで保存するため）
-            raw_path = f"raw/{yyyymm}/{table_name}.xlsx"
-            proceed_path = f"proceed/{yyyymm}/{table_name}.csv"
+            if not jp_name:
+                print(f"⚠️  マッピング未定義: {table_name}")
+                skipped_count += 1
+                continue
 
-            # rawファイルをダウンロード
-            raw_blob = bucket.blob(raw_path)
-            if not raw_blob.exists():
-                # 同じ日本語ファイル名を共有する他のテーブルからソースファイルを探す
+            # 日本語ファイル名でGCSを検索
+            raw_blob, raw_path = find_raw_file(bucket, jp_name, yyyymm)
+
+            if raw_blob is None:
+                # 同じソースファイルを共有するテーブルからファイルを探す
                 source_found = False
-                if jp_name:
-                    for other_table, (other_jp, _) in file_name_mapping.items():
-                        if other_jp == jp_name and other_table != table_name:
-                            alt_raw_path = f"raw/{yyyymm}/{other_table}.xlsx"
-                            alt_blob = bucket.blob(alt_raw_path)
-                            if alt_blob.exists():
-                                raw_path = alt_raw_path
-                                raw_blob = alt_blob
-                                source_found = True
-                                print(f"📁 共有ソース使用: {table_name} ← {alt_raw_path}")
-                                break
+                for other_table, (other_jp, _) in file_name_mapping.items():
+                    if other_jp == jp_name and other_table != table_name:
+                        other_blob, other_path = find_raw_file(bucket, other_jp, yyyymm)
+                        if other_blob:
+                            raw_blob = other_blob
+                            raw_path = other_path
+                            source_found = True
+                            print(f"📁 共有ソース使用: {table_name} ← {other_path}")
+                            break
+
                 if not source_found:
-                    print(f"⚠️  ファイルが存在しません: gs://{LANDING_BUCKET}/{raw_path}")
-                    error_count += 1
+                    print(f"⚠️  ファイルが存在しません: {jp_name} (yyyymm={yyyymm})")
+                    skipped_count += 1
                     continue
+
+            # proceedパス
+            proceed_path = f"{GCS_PROCEED_PREFIX}/{yyyymm}/{table_name}.csv"
 
             # 一時ファイルにダウンロード
             temp_excel = f"/tmp/{table_name}.xlsx"
             temp_csv = f"/tmp/{table_name}.csv"
 
             raw_blob.download_to_filename(temp_excel)
+            print(f"   入力: gs://{LANDING_BUCKET}/{raw_path}")
 
             # 変換処理
             if transform_excel_to_csv(temp_excel, temp_csv, table_name, sheet_name):
@@ -482,10 +623,12 @@ def process_gcs_files(yyyymm: str):
 
         except Exception as e:
             print(f"❌ 処理エラー ({table_name}): {e}")
+            import traceback
+            traceback.print_exc()
             error_count += 1
 
     print("=" * 60)
-    print(f"処理完了: 成功 {success_count} / エラー {error_count}")
+    print(f"処理完了: 成功 {success_count} / エラー {error_count} / スキップ {skipped_count}")
     print("=" * 60)
 
 def generate_month_range(start_yyyymm: str, end_yyyymm: str):
