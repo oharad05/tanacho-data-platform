@@ -44,14 +44,16 @@ target_months AS (
 
 -- 【工事営業部】の計算
 -- ① 売掛金（営業所コード=061）- 出力月の1ヶ月前を参照
+-- 重複データを集約して1行にする
 construction_receivables AS (
   SELECT
     tm.year_month,
-    bb.current_month_sales_balance AS receivables_amount
+    SUM(bb.current_month_sales_balance) / COUNT(*) AS receivables_amount  -- 重複排除のため平均を計算
   FROM target_months tm
   INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
     ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
   WHERE bb.branch_code = 61
+  GROUP BY tm.year_month
 ),
 
 -- ② 売掛金利率 - 出力月を参照
@@ -66,14 +68,16 @@ receivables_rate AS (
 ),
 
 -- ③ 未落手形（営業所コード=061）- 出力月の1ヶ月前を参照
+-- 重複データを集約して1行にする
 construction_bills AS (
   SELECT
     tm.year_month,
-    bb.unsettled_bill_balance AS bills_amount
+    SUM(bb.unsettled_bill_balance) / COUNT(*) AS bills_amount  -- 重複排除のため平均を計算
   FROM target_months tm
   INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
     ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
   WHERE bb.branch_code = 61
+  GROUP BY tm.year_month
 ),
 
 -- ④ 未落手形利率 - 出力月を参照

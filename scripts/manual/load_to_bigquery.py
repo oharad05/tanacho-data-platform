@@ -513,16 +513,16 @@ def process_cumulative_table(
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
 
     try:
-        # 既存データを削除（2024/9以降）
-        partition_field = TABLE_CONFIG[table_name]["partition_field"]
+        # 累積型テーブルは全データを削除（CSVに全履歴が含まれるため）
+        # 注: 単月型テーブルは2024/9以降のみ削除
         delete_query = f"""
         DELETE FROM `{table_id}`
-        WHERE {partition_field} >= '{FISCAL_START_DATE}'
+        WHERE TRUE
         """
         query_job = client.query(delete_query)
         query_job.result()
         deleted = query_job.num_dml_affected_rows or 0
-        print(f"   🗑️  既存データ削除: {deleted}行")
+        print(f"   🗑️  既存データ削除（全件）: {deleted}行")
 
         # スキーマを取得してsource_folderカラムを追加（存在しない場合）
         table = client.get_table(table_id)

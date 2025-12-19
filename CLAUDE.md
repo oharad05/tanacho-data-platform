@@ -29,7 +29,7 @@ pdf名: 2508(確定)損益長崎_202508.pdfの2ページ目(「2025.8確定」�
 pdf名: 2508(確定)損益福岡_202508.pdfの2ページ目「9~8月確定」と書いてある以下の項目)
 
 ### 手順1-2.比較結果の出力
-確認結果を､csv出力できる形式で､docs/test/{支店名}/{yyyymm}/test_output.csvという名前で出力してください｡項目は下記です｡
+確認結果を､csv出力できる形式で､docs/test/{支店名}/{yyyymm}/test_output_{実行日のyyyymmdd}.csvという名前で出力してください｡項目は下記です｡
 main_category
 secondary_category
 secondary_department
@@ -48,6 +48,7 @@ invest_resultに､調査した結果をテキストで入力してください�
 
 ### 手順1-5.修正の実行､修正後結果のファイル出力
 1-4を実行したあと一旦ストップしてください｡invest_resultで提案した修正を行うかの指示を仰いで下さい｡
+invest_resultのうち､データの誤りや仕様の間違いと思われるものは修正せず､dwh,dmのsqlの処理が間違っているもののみ修正を行ってください｡｡
 修正後､dwh,dmを更新し､比較計算を再度行い､test_output.csvと同じ場所に､test_output_{yyyymmdd}.csv(yyyymmddは修正した日付)というファイルを生成してください｡
 
 # データ整合性確認後の修正プロセス
