@@ -2,6 +2,13 @@
 """
 gcs-to-bq Cloud Run Service
 GCS上のExcelファイルをCSVに変換し、BigQueryにロード
+
+バリデーション機能:
+- カラム不整合チェック
+- レコード0件チェック
+- 重複レコードチェック
+
+結果はGoogle Cloud Loggingに出力され、後からSlack等に連携可能。
 """
 
 import os
@@ -9,14 +16,48 @@ import io
 import json
 import base64
 import traceback
+import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from flask import Flask, request, jsonify
 from google.cloud import storage
 from google.cloud import bigquery
 from google.cloud.exceptions import GoogleCloudError
+
+# ============================================================
+# バリデーション設定
+# ============================================================
+
+# バリデーション有効化フラグ
+VALIDATION_ENABLED = os.environ.get("VALIDATION_ENABLED", "true").lower() == "true"
+
+# テーブルごとのユニークキー定義（重複チェック用）
+UNIQUE_KEYS_CONFIG = {
+    "sales_target_and_achievements": ["sales_accounting_period", "branch_code", "department_code", "staff_code"],
+    "billing_balance": ["sales_month", "branch_code", "branch_name"],
+    "ledger_income": ["slip_date", "slip_number", "line_number"],
+    "ledger_loss": ["accounting_month", "slip_number", "line_number"],
+    "department_summary": ["sales_accounting_period", "code"],
+    "internal_interest": ["year_month", "branch", "category"],
+    "profit_plan_term": ["period", "item"],
+    "profit_plan_term_nagasaki": ["period", "item"],
+    "profit_plan_term_fukuoka": ["period", "item"],
+    "stocks": ["year_month", "branch", "category"],
+    "ms_allocation_ratio": ["year_month", "branch", "department", "category"],
+    "customer_sales_target_and_achievements": ["sales_accounting_period", "branch_code", "customer_code"],
+    "construction_progress_days_amount": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
+    "construction_progress_days_final_date": ["final_billing_sales_date", "property_number", "property_data_classification"],
+}
+
+# バリデーションログ用のlogger
+validation_logger = logging.getLogger("gcs-to-bq-validation")
+if not validation_logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    validation_logger.addHandler(handler)
+    validation_logger.setLevel(logging.INFO)
 
 # 環境変数
 PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
@@ -69,6 +110,201 @@ TABLE_CONFIG = {
         "clustering_fields": ["property_number"]
     }
 }
+
+# ============================================================
+# バリデーション関数
+# ============================================================
+
+def log_validation_result(result: Dict[str, Any]) -> None:
+    """
+    バリデーション結果をCloud Loggingに出力
+
+    構造化ログとしてCloud Loggingで検索・フィルタリング可能。
+    ログは以下のラベルでフィルタ可能:
+    - labels.service: "gcs-to-bq"
+    - labels.validation_type: "column_check" / "empty_check" / "duplicate_check"
+    - labels.status: "OK" / "ERROR"
+    """
+    log_entry = {
+        "severity": "ERROR" if result.get("status") == "ERROR" else "INFO",
+        "message": _format_validation_message(result),
+        "labels": {
+            "service": "gcs-to-bq",
+            "table_name": result.get("table_name", "unknown"),
+            "validation_type": result.get("validation_type", "unknown"),
+            "status": result.get("status", "unknown")
+        },
+        "jsonPayload": result
+    }
+
+    if result.get("status") == "ERROR":
+        validation_logger.error(json.dumps(log_entry, ensure_ascii=False))
+    elif result.get("warnings"):
+        validation_logger.warning(json.dumps(log_entry, ensure_ascii=False))
+    else:
+        validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
+
+
+def _format_validation_message(result: Dict[str, Any]) -> str:
+    """ログメッセージを整形"""
+    status = result.get("status", "UNKNOWN")
+    table_name = result.get("table_name", "unknown")
+    validation_type = result.get("validation_type", "validation")
+
+    if status == "OK":
+        row_count = result.get("row_count", result.get("total_rows", 0))
+        return f"[VALIDATION {status}] {table_name}: {validation_type} passed ({row_count} rows)"
+    else:
+        error_count = len(result.get("errors", []))
+        return f"[VALIDATION {status}] {table_name}: {validation_type} failed ({error_count} errors)"
+
+
+def validate_columns_and_rows(
+    df: pd.DataFrame,
+    table_name: str,
+    expected_columns: List[str],
+    source_file: str = None
+) -> Dict[str, Any]:
+    """
+    カラム不整合とレコード0件をチェック
+
+    Args:
+        df: 検証対象のDataFrame（日本語カラム名）
+        table_name: テーブル名
+        expected_columns: 期待されるカラム名リスト（日本語）
+        source_file: ソースファイル名
+
+    Returns:
+        検証結果の辞書
+    """
+    errors = []
+    warnings = []
+
+    # カラム名の改行を除去してから比較
+    actual_columns = [str(col).replace('\n', '') for col in df.columns]
+
+    # 1. カラム不整合チェック
+    missing_columns = [col for col in expected_columns if col not in actual_columns]
+    extra_columns = [col for col in actual_columns if col not in expected_columns]
+
+    if missing_columns:
+        errors.append({
+            "type": "MISSING_COLUMNS",
+            "message": f"期待されるカラムが存在しません: {missing_columns}",
+            "details": {"missing": missing_columns}
+        })
+
+    if extra_columns:
+        warnings.append({
+            "type": "EXTRA_COLUMNS",
+            "message": f"定義外のカラムが存在します: {extra_columns}",
+            "details": {"extra": extra_columns}
+        })
+
+    # 2. レコード0件チェック
+    row_count = len(df)
+    if row_count == 0:
+        errors.append({
+            "type": "EMPTY_DATA",
+            "message": "データが0件です"
+        })
+
+    result = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "service": "gcs-to-bq",
+        "validation_type": "column_and_row_check",
+        "table_name": table_name,
+        "source_file": source_file,
+        "status": "ERROR" if errors else "OK",
+        "row_count": row_count,
+        "column_count": len(actual_columns),
+        "expected_column_count": len(expected_columns),
+        "errors": errors,
+        "warnings": warnings
+    }
+
+    return result
+
+
+def validate_duplicates_in_bq(
+    bq_client: bigquery.Client,
+    table_name: str
+) -> Dict[str, Any]:
+    """
+    BigQueryテーブルの重複をチェック
+
+    Args:
+        bq_client: BigQueryクライアント
+        table_name: テーブル名
+
+    Returns:
+        検証結果の辞書
+    """
+    errors = []
+
+    # ユニークキー定義を取得
+    unique_keys = UNIQUE_KEYS_CONFIG.get(table_name)
+    if not unique_keys:
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "duplicate_check",
+            "table_name": table_name,
+            "status": "SKIPPED",
+            "message": "ユニークキーが定義されていません"
+        }
+
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+    key_cols = ", ".join(unique_keys)
+
+    # 重複チェッククエリ
+    query = f"""
+    SELECT {key_cols}, COUNT(*) as duplicate_count
+    FROM `{table_id}`
+    GROUP BY {key_cols}
+    HAVING COUNT(*) > 1
+    LIMIT 10
+    """
+
+    try:
+        result = bq_client.query(query).result()
+        duplicates = [dict(row) for row in result]
+        duplicate_count = len(duplicates)
+
+        if duplicate_count > 0:
+            errors.append({
+                "type": "DUPLICATE_RECORDS",
+                "message": f"重複レコードが存在します（サンプル: {duplicate_count}件）",
+                "details": {
+                    "unique_keys": unique_keys,
+                    "sample_duplicates": duplicates
+                }
+            })
+
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "duplicate_check",
+            "table_name": table_name,
+            "status": "ERROR" if errors else "OK",
+            "unique_keys": unique_keys,
+            "duplicate_sample_count": duplicate_count,
+            "errors": errors
+        }
+
+    except Exception as e:
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "duplicate_check",
+            "table_name": table_name,
+            "status": "ERROR",
+            "errors": [{
+                "type": "QUERY_ERROR",
+                "message": f"重複チェッククエリ実行エラー: {str(e)}"
+            }]
+        }
+
 
 # ============================================================
 # Excel → CSV 変換処理
@@ -346,6 +582,26 @@ def transform_excel_to_csv(
         df.columns = [col.replace('\n', '') if isinstance(col, str) else col for col in df.columns]
 
         print(f"   データ: {len(df)}行 × {len(df.columns)}列")
+
+        # ============================================================
+        # バリデーション: カラム不整合・レコード0件チェック
+        # ============================================================
+        if VALIDATION_ENABLED:
+            expected_columns = list(column_mapping.keys())
+            validation_result = validate_columns_and_rows(
+                df=df,
+                table_name=table_name,
+                expected_columns=expected_columns,
+                source_file=raw_path
+            )
+            log_validation_result(validation_result)
+
+            # エラーがある場合は警告を出すが処理は続行
+            if validation_result.get("status") == "ERROR":
+                for error in validation_result.get("errors", []):
+                    print(f"   ⚠️  バリデーションエラー: {error.get('message')}")
+            else:
+                print(f"   ✅ バリデーションOK: カラム・レコード数チェック passed")
 
         # 日本語カラム名を英語に変換（型変換前）
         jp_column_mapping = {jp: info for jp, info in column_mapping.items()}
@@ -724,6 +980,22 @@ def load_endpoint():
             if table_success:
                 # テーブルとカラムの説明を更新
                 update_table_and_column_descriptions(bq_client, storage_client, table_name)
+
+                # ============================================================
+                # バリデーション: 重複チェック
+                # ============================================================
+                if VALIDATION_ENABLED:
+                    dup_result = validate_duplicates_in_bq(bq_client, table_name)
+                    log_validation_result(dup_result)
+
+                    if dup_result.get("status") == "ERROR":
+                        for error in dup_result.get("errors", []):
+                            print(f"   ⚠️  重複チェックエラー: {error.get('message')}")
+                    elif dup_result.get("status") == "SKIPPED":
+                        print(f"   ⏭️  重複チェックスキップ: ユニークキー未定義")
+                    else:
+                        print(f"   ✅ バリデーションOK: 重複チェック passed")
+
                 success_count += 1
                 results.append({"table": table_name, "status": "success"})
             else:
@@ -823,6 +1095,22 @@ def pubsub_endpoint():
 
             if table_success:
                 update_table_and_column_descriptions(bq_client, storage_client, table_name)
+
+                # ============================================================
+                # バリデーション: 重複チェック
+                # ============================================================
+                if VALIDATION_ENABLED:
+                    dup_result = validate_duplicates_in_bq(bq_client, table_name)
+                    log_validation_result(dup_result)
+
+                    if dup_result.get("status") == "ERROR":
+                        for error in dup_result.get("errors", []):
+                            print(f"   ⚠️  重複チェックエラー: {error.get('message')}")
+                    elif dup_result.get("status") == "SKIPPED":
+                        print(f"   ⏭️  重複チェックスキップ: ユニークキー未定義")
+                    else:
+                        print(f"   ✅ バリデーションOK: 重複チェック passed")
+
                 load_success += 1
             else:
                 load_error += 1

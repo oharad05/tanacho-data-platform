@@ -8,6 +8,12 @@
 - GCSパス: gs://data-platform-landing-prod/spreadsheet/
 - BQテーブル: corporate_data.ss_*
 
+バリデーション機能:
+- カラム不整合チェック
+- レコード0件チェック
+
+結果はGoogle Cloud Loggingに出力され、後からSlack等に連携可能。
+
 エンドポイント:
     POST /sync - 全スプレッドシートを同期
     GET /health - ヘルスチェック
@@ -15,9 +21,11 @@
 
 import os
 import io
+import json
+import logging
 import traceback
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import pandas as pd
 from flask import Flask, request, jsonify
@@ -25,6 +33,20 @@ from googleapiclient.discovery import build
 from google.cloud import storage, bigquery
 from google.auth import default as google_auth_default
 from google.oauth2 import service_account
+
+# ============================================================
+# バリデーション設定
+# ============================================================
+
+VALIDATION_ENABLED = os.environ.get("VALIDATION_ENABLED", "true").lower() == "true"
+
+# バリデーションログ用のlogger
+validation_logger = logging.getLogger("spreadsheet-to-bq-validation")
+if not validation_logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    validation_logger.addHandler(handler)
+    validation_logger.setLevel(logging.INFO)
 
 # ===== Flask アプリ =====
 app = Flask(__name__)
@@ -66,6 +88,129 @@ SPREADSHEET_MAPPING = {
         {"sheet_name": "システム利用シート_在庫損益・前受け金", "table_name": "inventory_advance_nagasaki"},
     ],
 }
+
+
+# ============================================================
+# バリデーション関数
+# ============================================================
+
+def log_validation_result(result: Dict[str, Any]) -> None:
+    """
+    バリデーション結果をCloud Loggingに出力
+
+    構造化ログとしてCloud Loggingで検索・フィルタリング可能。
+    """
+    log_entry = {
+        "severity": "ERROR" if result.get("status") == "ERROR" else "INFO",
+        "message": _format_validation_message(result),
+        "labels": {
+            "service": "spreadsheet-to-bq",
+            "table_name": result.get("table_name", "unknown"),
+            "validation_type": result.get("validation_type", "unknown"),
+            "status": result.get("status", "unknown")
+        },
+        "jsonPayload": result
+    }
+
+    if result.get("status") == "ERROR":
+        validation_logger.error(json.dumps(log_entry, ensure_ascii=False))
+    elif result.get("warnings"):
+        validation_logger.warning(json.dumps(log_entry, ensure_ascii=False))
+    else:
+        validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
+
+
+def _format_validation_message(result: Dict[str, Any]) -> str:
+    """ログメッセージを整形"""
+    status = result.get("status", "UNKNOWN")
+    table_name = result.get("table_name", "unknown")
+    validation_type = result.get("validation_type", "validation")
+
+    if status == "OK":
+        row_count = result.get("row_count", 0)
+        return f"[VALIDATION {status}] {table_name}: {validation_type} passed ({row_count} rows)"
+    else:
+        error_count = len(result.get("errors", []))
+        return f"[VALIDATION {status}] {table_name}: {validation_type} failed ({error_count} errors)"
+
+
+def validate_columns_and_rows(
+    raw_data: List[List],
+    table_name: str,
+    expected_columns: List[str],
+    sheet_name: str = None
+) -> Dict[str, Any]:
+    """
+    スプレッドシートデータのカラム不整合とレコード0件をチェック
+
+    Args:
+        raw_data: スプレッドシートから取得した生データ（2次元リスト）
+        table_name: テーブル名
+        expected_columns: 期待されるカラム名リスト（日本語）
+        sheet_name: シート名
+
+    Returns:
+        検証結果の辞書
+    """
+    errors = []
+    warnings = []
+
+    # ヘッダーとデータを分離
+    if not raw_data:
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "spreadsheet-to-bq",
+            "validation_type": "column_and_row_check",
+            "table_name": table_name,
+            "sheet_name": sheet_name,
+            "status": "ERROR",
+            "row_count": 0,
+            "errors": [{"type": "EMPTY_DATA", "message": "データが0件です（ヘッダーも含め空）"}]
+        }
+
+    actual_columns = [str(col).strip() for col in raw_data[0]]
+    row_count = len(raw_data) - 1  # ヘッダーを除く
+
+    # 1. カラム不整合チェック
+    missing_columns = [col for col in expected_columns if col not in actual_columns]
+    extra_columns = [col for col in actual_columns if col not in expected_columns]
+
+    if missing_columns:
+        errors.append({
+            "type": "MISSING_COLUMNS",
+            "message": f"期待されるカラムが存在しません: {missing_columns}",
+            "details": {"missing": missing_columns}
+        })
+
+    if extra_columns:
+        warnings.append({
+            "type": "EXTRA_COLUMNS",
+            "message": f"定義外のカラムが存在します: {extra_columns}",
+            "details": {"extra": extra_columns}
+        })
+
+    # 2. レコード0件チェック
+    if row_count == 0:
+        errors.append({
+            "type": "EMPTY_DATA",
+            "message": "データが0件です（ヘッダーのみ）"
+        })
+
+    result = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "service": "spreadsheet-to-bq",
+        "validation_type": "column_and_row_check",
+        "table_name": table_name,
+        "sheet_name": sheet_name,
+        "status": "ERROR" if errors else "OK",
+        "row_count": row_count,
+        "column_count": len(actual_columns),
+        "expected_column_count": len(expected_columns),
+        "errors": errors,
+        "warnings": warnings
+    }
+
+    return result
 
 
 def _get_credentials():
@@ -335,6 +480,25 @@ def sync_all_spreadsheets() -> dict:
 
                 # 4. スプレッドシートからデータ取得
                 raw_data = fetch_spreadsheet_data(sheet_id, sheet_name)
+
+                # ============================================================
+                # バリデーション: カラム不整合・レコード0件チェック
+                # ============================================================
+                if VALIDATION_ENABLED:
+                    expected_columns = list(columns_mapping['jp_name'])
+                    validation_result = validate_columns_and_rows(
+                        raw_data=raw_data,
+                        table_name=table_name,
+                        expected_columns=expected_columns,
+                        sheet_name=sheet_name
+                    )
+                    log_validation_result(validation_result)
+
+                    if validation_result.get("status") == "ERROR":
+                        for error in validation_result.get("errors", []):
+                            print(f"  ⚠️  バリデーションエラー: {error.get('message')}")
+                    else:
+                        print(f"  ✅ バリデーションOK: カラム・レコード数チェック passed")
 
                 # 5. データ変換
                 df = transform_data(raw_data, columns_mapping)
