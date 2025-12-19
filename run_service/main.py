@@ -13,14 +13,34 @@ LANDING_BUCKET     = os.environ["LANDING_BUCKET"]           # GCSバケット名
 MAPPING_GCS_PATH   = os.environ.get("MAPPING_GCS_PATH", "config/mapping_files.csv")
 CLOUD_RUN_ENDPOINT = os.environ.get("CLOUD_RUN_ENDPOINT")   # 任意: 下流通知
 SERVICE_JSON       = os.environ.get("SERVICE_JSON_PATH")    # 任意: 鍵ファイル
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+IMPERSONATE_USER   = os.environ.get("IMPERSONATE_USER")     # ドメイン全体の委任: なりすますユーザー
+
+# スコープ: 管理コンソールで登録したものと一致させる
+SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets"
+]
 
 # ============== Drive API ==============
 def _build_drive_service():
+    """
+    Drive APIサービスを構築
+
+    ドメイン全体の委任（Domain-wide Delegation）を使用する場合:
+    - SERVICE_JSON_PATH: サービスアカウントのJSONキーファイルパス
+    - IMPERSONATE_USER: なりすますユーザーのメールアドレス（例: fiby2@tanacho.com）
+
+    これにより、サービスアカウントが指定ユーザーとしてDriveにアクセスできる
+    """
     if SERVICE_JSON:
         creds = service_account.Credentials.from_service_account_file(SERVICE_JSON, scopes=SCOPES)
+        # ドメイン全体の委任: ユーザーになりすまし
+        if IMPERSONATE_USER:
+            creds = creds.with_subject(IMPERSONATE_USER)
+            print(f"[INFO] Domain-wide delegation enabled: impersonating {IMPERSONATE_USER}")
     else:
         creds, _ = google_auth_default(scopes=SCOPES)
+        print("[INFO] Using default credentials (no impersonation)")
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 def _get_drive_id_of(drive, file_id: str) -> str | None:

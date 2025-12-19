@@ -748,6 +748,14 @@ if __name__ == "__main__":
                 print(f"   ⚠️  CSVファイルが存在しません: {gcs_uri}")
                 continue
 
+            # 累積型テーブルの場合は専用処理（source_folderカラム追加が必要）
+            if table_name in CUMULATIVE_TABLE_CONFIG:
+                print(f"   （累積型テーブル: 全期間で再処理）")
+                target_months = get_available_months_from_gcs()
+                process_cumulative_table(client, storage_client, table_name, target_months)
+                continue
+
+            # 単月型テーブルの処理
             # 既存の指定月データを削除
             delete_partition_data_by_csv(client, table_name, gcs_uri)
 

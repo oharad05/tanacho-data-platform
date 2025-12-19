@@ -24,6 +24,7 @@ from flask import Flask, request, jsonify
 from googleapiclient.discovery import build
 from google.cloud import storage, bigquery
 from google.auth import default as google_auth_default
+from google.oauth2 import service_account
 
 # ===== Flask アプリ =====
 app = Flask(__name__)
@@ -33,15 +34,18 @@ PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
 LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
 # 共有ドライブ内の「手入力用」フォルダID
 MANUAL_INPUT_FOLDER_ID = os.environ.get("MANUAL_INPUT_FOLDER_ID", "1O4eUpl6AWgag1oMTyrtoA7sXEHX3mfxc")
+# ドメイン全体の委任用
+SERVICE_JSON = os.environ.get("SERVICE_JSON_PATH")        # サービスアカウントJSONキーファイルパス
+IMPERSONATE_USER = os.environ.get("IMPERSONATE_USER")     # なりすますユーザーのメールアドレス
 
 GCS_BASE_PATH = "spreadsheet"  # Drive連携の /raw/, /proceed/ とは完全分離
 BQ_DATASET = "corporate_data"
 TABLE_PREFIX = "ss_"  # 既存テーブルと区別するプレフィックス
 
-# Drive API + Sheets API + Cloud Platform
+# スコープ: 管理コンソールで登録したものと一致させる
 SCOPES = [
-    "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/cloud-platform"
 ]
 
@@ -64,15 +68,38 @@ SPREADSHEET_MAPPING = {
 }
 
 
+def _get_credentials():
+    """
+    認証情報を取得
+
+    ドメイン全体の委任（Domain-wide Delegation）を使用する場合:
+    - SERVICE_JSON_PATH: サービスアカウントのJSONキーファイルパス
+    - IMPERSONATE_USER: なりすますユーザーのメールアドレス（例: fiby2@tanacho.com）
+
+    これにより、サービスアカウントが指定ユーザーとしてDrive/Sheetsにアクセスできる
+    """
+    if SERVICE_JSON:
+        creds = service_account.Credentials.from_service_account_file(SERVICE_JSON, scopes=SCOPES)
+        # ドメイン全体の委任: ユーザーになりすまし
+        if IMPERSONATE_USER:
+            creds = creds.with_subject(IMPERSONATE_USER)
+            print(f"[INFO] Domain-wide delegation enabled: impersonating {IMPERSONATE_USER}")
+        return creds
+    else:
+        creds, _ = google_auth_default(scopes=SCOPES)
+        print("[INFO] Using default credentials (no impersonation)")
+        return creds
+
+
 def _build_drive_service():
     """Drive APIサービスを構築"""
-    creds, _ = google_auth_default(scopes=SCOPES)
+    creds = _get_credentials()
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
 def _build_sheets_service():
     """Sheets APIサービスを構築"""
-    creds, _ = google_auth_default(scopes=SCOPES)
+    creds = _get_credentials()
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 

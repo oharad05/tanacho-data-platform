@@ -89,26 +89,26 @@ nagasaki_profit_plan AS (
 ),
 
 nagasaki_target AS (
-  SELECT period AS year_month, '長崎支店' AS branch, '長崎支店' AS organization, '長崎支店計' AS detail_category, nagasaki_branch_total * 1000 AS target_amount
+  SELECT period AS year_month, '長崎支店' AS branch, '長崎支店' AS organization, '長崎支店計' AS detail_category, nagasaki_branch_total AS target_amount
   FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '工事営業部', '工事営業部計', construction_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '工事営業部', '工事営業部計', construction_sales_department_total FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '工事営業部', 'ガラス工事', glass_construction_dept * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '工事営業部', 'ガラス工事', glass_construction_dept FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '工事営業部', 'ビルサッシ', building_sash * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '工事営業部', 'ビルサッシ', building_sash FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', '硝子建材営業部計', glass_building_material_sales_department_total * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', '硝子建材営業部計', glass_building_material_sales_department_total FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', '硝子工事', glass_construction * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', '硝子工事', glass_construction FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', 'サッシ工事', sash_construction * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', 'サッシ工事', sash_construction FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', '硝子販売', glass_sales * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', '硝子販売', glass_sales FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', 'サッシ販売', sash_sales * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', 'サッシ販売', sash_sales FROM nagasaki_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '長崎支店', '硝子建材営業部', '完成品', finished_products * 1000 FROM nagasaki_profit_plan WHERE item = '経常利益'
+  SELECT period, '長崎支店', '硝子建材営業部', '完成品', finished_products FROM nagasaki_profit_plan WHERE item = '経常利益'
 ),
 
 fukuoka_profit_plan AS (
@@ -131,28 +131,28 @@ fukuoka_profit_plan AS (
 
 fukuoka_target AS (
   -- 福岡支店の値は千円単位で格納されているため、1000倍して円単位に変換
-  SELECT period AS year_month, '福岡支店' AS branch, '福岡支店' AS organization, '福岡支店計' AS detail_category, fukuoka_branch_total * 1000 AS target_amount
+  SELECT period AS year_month, '福岡支店' AS branch, '福岡支店' AS organization, '福岡支店計' AS detail_category, fukuoka_branch_total AS target_amount
   FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '工事部', '工事部計', construction_department_total * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '工事部', '工事部計', construction_department_total FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '工事部', '硝子工事', glass_construction * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '工事部', '硝子工事', glass_construction FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '工事部', 'ビルサッシ', building_sash * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '工事部', 'ビルサッシ', building_sash FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '工事部', '内装工事', interior_construction * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '工事部', '内装工事', interior_construction FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', '硝子樹脂計', glass_resin_total * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '硝子樹脂部', '硝子樹脂計', glass_resin_total FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', '硝子', glass * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '硝子樹脂部', '硝子', glass FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', '建材', building_materials * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '硝子樹脂部', '建材', building_materials FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '硝子樹脂部', '樹脂', resin * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '硝子樹脂部', '樹脂', resin FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', 'GSセンター', 'GSセンター', gs_center * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', 'GSセンター', 'GSセンター', gs_center FROM fukuoka_profit_plan WHERE item = '経常利益'
   UNION ALL
-  SELECT period, '福岡支店', '福北センター', '福北センター', fukuhoku_center * 1000 FROM fukuoka_profit_plan WHERE item = '経常利益'
+  SELECT period, '福岡支店', '福北センター', '福北センター', fukuhoku_center FROM fukuoka_profit_plan WHERE item = '経常利益'
 )
 
 SELECT DISTINCT * FROM tokyo_target
