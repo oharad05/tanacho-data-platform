@@ -9,9 +9,10 @@ DWH: 営業外費用（社内利息）- 長崎支店
 
 計算ロジック:
   工事営業部・硝子建材営業部共通:
-  社内利息 = (①売掛金+⑩在庫損益)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
+  社内利息 = (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
 
   ⑩在庫損益: ss_inventory_advance_nagasaki.inventory_profit_loss（スプレッドシート連携）
+  前受け金: ss_inventory_advance_nagasaki.advance_received（スプレッドシート連携）
      紐付け条件: posting_month = year_month, category = detail_category
 
   参照月の考え方:
@@ -29,7 +30,7 @@ DWH: 営業外費用（社内利息）- 長崎支店
   - interest_expense: 社内利息（円）
 
 注意事項:
-  - 半期の前受け金加算は今回の実装対象外
+  - 前受け金（advance_received）はスプレッドシート連携で取得し、①売掛金に加算
 ============================================================
 */
 
@@ -167,35 +168,37 @@ depreciation_interest AS (
     AND breakdown = '償却資産'
 ),
 
--- ⑩ 在庫損益（工事営業部用）- スプレッドシート連携
+-- ⑩ 在庫損益・前受け金（工事営業部用）- スプレッドシート連携
 -- 紐付け条件: posting_month = year_month, category = '工事営業部計'
 construction_inventory_profit_loss AS (
   SELECT
     posting_month AS year_month,
-    inventory_profit_loss
+    inventory_profit_loss,
+    advance_received
   FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
   WHERE category = '工事営業部計'
 ),
 
--- ⑩ 在庫損益（硝子建材営業部用）- スプレッドシート連携
+-- ⑩ 在庫損益・前受け金（硝子建材営業部用）- スプレッドシート連携
 -- 紐付け条件: posting_month = year_month, category = '硝子建材営業部計'
 glass_inventory_profit_loss AS (
   SELECT
     posting_month AS year_month,
-    inventory_profit_loss
+    inventory_profit_loss,
+    advance_received
   FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
   WHERE category = '硝子建材営業部計'
 ),
 
 -- 工事営業部の社内利息計算
--- 計算式: (①売掛金+⑩在庫損益)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
+-- 計算式: (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
 construction_interest AS (
   SELECT
     cr.year_month,
     '長崎支店' AS branch,
     '工事営業部計' AS detail_category,
     (
-      (COALESCE(cr.receivables_amount, 0) + COALESCE(cipl.inventory_profit_loss, 0)) * COALESCE(rr.interest_rate, 0) +
+      (COALESCE(cr.receivables_amount, 0) + COALESCE(cipl.inventory_profit_loss, 0) + COALESCE(cipl.advance_received, 0)) * COALESCE(rr.interest_rate, 0) +
       COALESCE(cb.bills_amount, 0) * COALESCE(br.interest_rate, 0) +
       COALESCE(ci.inventory_amount, 0) * COALESCE(ir.interest_rate, 0) +
       COALESCE(cbi.building_interest_amount, 0) * COALESCE(car.allocation_ratio, 0) +
@@ -268,14 +271,14 @@ glass_allocation_ratio AS (
 ),
 
 -- 硝子建材営業部の社内利息計算
--- 計算式: (①売掛金+⑩在庫損益)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
+-- 計算式: (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
 glass_interest AS (
   SELECT
     gr.year_month,
     '長崎支店' AS branch,
     '硝子建材営業部計' AS detail_category,
     (
-      (COALESCE(gr.receivables_amount, 0) + COALESCE(gipl.inventory_profit_loss, 0)) * COALESCE(rr.interest_rate, 0) +
+      (COALESCE(gr.receivables_amount, 0) + COALESCE(gipl.inventory_profit_loss, 0) + COALESCE(gipl.advance_received, 0)) * COALESCE(rr.interest_rate, 0) +
       COALESCE(gb.bills_amount, 0) * COALESCE(br.interest_rate, 0) +
       COALESCE(gi.inventory_amount, 0) * COALESCE(ir.interest_rate, 0) +
       COALESCE(gbi.building_interest_amount, 0) * COALESCE(gar.allocation_ratio, 0) +
