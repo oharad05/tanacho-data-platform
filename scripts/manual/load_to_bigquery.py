@@ -36,6 +36,16 @@ SPREADSHEET_PROCEED_PATH = "spreadsheet/proceed"
 SPREADSHEET_COLUMNS_PATH = "spreadsheet/config/columns"
 SPREADSHEET_TABLE_PREFIX = "ss_"
 
+# ゼロ日付変換設定（0000/00/00をnullに変換）
+ZERO_DATE_CONFIG = {
+    "construction_progress_days_amount": [
+        "contract_date",
+        "construction_start_date",
+        "construction_end_date",
+        "completion_date",
+    ],
+}
+
 # スプレッドシートテーブル設定（パーティションなし）
 SPREADSHEET_TABLE_CONFIG = {
     "gs_sales_profit": {
@@ -520,6 +530,18 @@ def process_cumulative_table(
     idx = combined_df.groupby(unique_keys)["source_folder"].transform("max") == combined_df["source_folder"]
     deduped_df = combined_df[idx].drop_duplicates(subset=unique_keys, keep="last").reset_index(drop=True)
     print(f"   ✨ 重複除去後: {len(deduped_df)}行")
+
+    # ゼロ日付をnullに変換（BigQueryにロードする前に変換）
+    if table_name in ZERO_DATE_CONFIG:
+        zero_date_patterns = ['0000/00/00', '0000-00-00', '0000/0/0', '0000-0-0']
+        for col in ZERO_DATE_CONFIG[table_name]:
+            if col in deduped_df.columns:
+                for pattern in zero_date_patterns:
+                    mask = deduped_df[col].astype(str).str.strip() == pattern
+                    if mask.any():
+                        count = mask.sum()
+                        deduped_df.loc[mask, col] = None
+                        print(f"   🔄 {col}: {count}件のゼロ日付をnullに変換")
 
     # 一時CSVに保存
     temp_csv = f"/tmp/{table_name}_cumulative.csv"
