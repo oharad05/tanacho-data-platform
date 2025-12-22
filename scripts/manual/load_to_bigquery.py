@@ -94,6 +94,11 @@ CUMULATIVE_TABLE_CONFIG = {
         # property_period（パーティション列）も含めてユニークキーとする
         "unique_keys": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
     },
+    "stocks": {
+        # ソース: 9_在庫.xlsx
+        # 年月・支店・部署・カテゴリでユニーク
+        "unique_keys": ["year_month", "branch", "department", "category"],
+    },
 }
 
 # テーブル定義とパーティション列のマッピング
