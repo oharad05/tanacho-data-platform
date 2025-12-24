@@ -1,1 +1,27 @@
-・Bigqueryの説明に連携元を追加
+  Cloud Workflows
+      ├── Step 1: drive-to-gcs (Pub/Sub経由)
+       - 1-1: 整合性確認
+        - 取り込み件数が0件のテーブルがあった場合､そのファイル名をアラート
+        - 何らかの原因で取り込みエラーがあった場合､そのファイル名をアラート
+      ├── Step 2: 待機 (2分)
+      ├── Step 3: spreadsheet-to-bq    (Pub/Sub経由)
+       - 3-1: 整合性確認
+        - 取り込み件数が0件のシートがあった場合､そのシート名をアラート
+        - 何らかの原因で取り込みエラーがあった場合､そのシート名をアラート
+      ├── Step 4: 待機 (2分)
+      ├── Step 5: gcs-to-bq (Pub/Sub経由)
+       - 5-1: 整合性確認
+        - カラムの不整合が起きている場合に､起きているテーブルと不整合が起きているカラムをアラート
+        - 何らかの原因でBigqueryへの取り込みエラーがあった場合､そのテーブル名をアラート
+      ├── Step 6: 待機 (3分)
+      ├── Step 7: dwh-datamart-update (Job実行・完了待ち)
+       - 7-1: 整合性確認
+        - main_category='その他'に値が入っている場合alert
+        - 各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し､発生していたらアラート
+      └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に)
+
+■追加要件
+ - drive-to-gcsはyyyymmを指定してのappendかreplace選べるようにする
+
+  gsutil cp /Users/oharayousuke/Downloads/data-platform-prod-475201-89d933b06096.json \
+    gs://data-platform-landing-prod/config/sa-data-platform-key.json

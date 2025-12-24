@@ -45,11 +45,14 @@ SELECT
     ELSE NULL
   END AS display_value_divide_million,
   main_display_flag,
-  -- 各支店計の表示フラグ
+  -- 各支店計の表示フラグ（本年目標・本年実績のみ対象）
   CASE
-    WHEN (main_department = '東京支店' AND secondary_department = '東京支店計')
+    WHEN (
+      (main_department = '東京支店' AND secondary_department = '東京支店計')
       OR (main_department = '長崎支店' AND secondary_department = '長崎支店計')
       OR (main_department = '福岡支店' AND secondary_department = '福岡支店計')
+    )
+    AND (secondary_category LIKE '本年目標%' OR secondary_category LIKE '本年実績%')
     THEN 1
     ELSE 0
   END AS sales_perform_display_flag,

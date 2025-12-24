@@ -59,8 +59,36 @@ LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
 # 共有ドライブ内の「手入力用」フォルダID
 MANUAL_INPUT_FOLDER_ID = os.environ.get("MANUAL_INPUT_FOLDER_ID", "1O4eUpl6AWgag1oMTyrtoA7sXEHX3mfxc")
 # ドメイン全体の委任用
-SERVICE_JSON = os.environ.get("SERVICE_JSON_PATH")        # サービスアカウントJSONキーファイルパス
+SERVICE_JSON = os.environ.get("SERVICE_JSON_PATH")        # サービスアカウントJSONキーファイルパス（ローカル）
+SERVICE_JSON_GCS = os.environ.get("SERVICE_JSON_GCS_PATH") # サービスアカウントJSONキーファイルパス（GCS）
 IMPERSONATE_USER = os.environ.get("IMPERSONATE_USER")     # なりすますユーザーのメールアドレス
+
+# === GCSからJSONキーをダウンロード ===
+def _download_service_json_from_gcs():
+    """GCSからサービスアカウントJSONキーをダウンロードして一時ファイルに保存"""
+    if not SERVICE_JSON_GCS:
+        return None
+    try:
+        # gs://bucket/path/to/file.json 形式をパース
+        gcs_path = SERVICE_JSON_GCS.replace("gs://", "")
+        bucket_name = gcs_path.split("/")[0]
+        blob_path = "/".join(gcs_path.split("/")[1:])
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+
+        # 一時ファイルに保存
+        temp_path = "/tmp/sa-key.json"
+        blob.download_to_filename(temp_path)
+        print(f"[INFO] Downloaded service account key from GCS: {SERVICE_JSON_GCS}")
+        return temp_path
+    except Exception as e:
+        print(f"[ERROR] Failed to download service account key from GCS: {e}")
+        return None
+
+# 起動時にGCSからキーをダウンロード
+_SERVICE_JSON_PATH = SERVICE_JSON or _download_service_json_from_gcs()
 
 GCS_BASE_PATH = "spreadsheet"  # Drive連携の /raw/, /proceed/ とは完全分離
 GCS_RAW_PATH = f"{GCS_BASE_PATH}/raw"
@@ -221,13 +249,13 @@ def _get_credentials():
     認証情報を取得
 
     ドメイン全体の委任（Domain-wide Delegation）を使用する場合:
-    - SERVICE_JSON_PATH: サービスアカウントのJSONキーファイルパス
+    - _SERVICE_JSON_PATH: サービスアカウントのJSONキーファイルパス（ローカルまたはGCSからダウンロード）
     - IMPERSONATE_USER: なりすますユーザーのメールアドレス（例: fiby2@tanacho.com）
 
     これにより、サービスアカウントが指定ユーザーとしてDrive/Sheetsにアクセスできる
     """
-    if SERVICE_JSON:
-        creds = service_account.Credentials.from_service_account_file(SERVICE_JSON, scopes=SCOPES)
+    if _SERVICE_JSON_PATH:
+        creds = service_account.Credentials.from_service_account_file(_SERVICE_JSON_PATH, scopes=SCOPES)
         # ドメイン全体の委任: ユーザーになりすまし
         if IMPERSONATE_USER:
             creds = creds.with_subject(IMPERSONATE_USER)

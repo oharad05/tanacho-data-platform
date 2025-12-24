@@ -1,0 +1,415 @@
+# ============================================================
+# Data Pipeline Workflow
+# ============================================================
+# データパイプライン全体を管理するCloud Workflows定義
+#
+# フロー:
+#   Step 1: drive-to-gcs (Google Drive → GCS)
+#   Step 2: 待機 (2分)
+#   Step 3: spreadsheet-to-bq (スプレッドシート → GCS)
+#   Step 4: 待機 (2分)
+#   Step 5: gcs-to-bq (GCS → BigQuery)
+#   Step 6: 待機 (3分)
+#   Step 7: dwh-datamart-update (DWH/DataMart更新 - Cloud Run Job)
+#   Step 8: 完了通知 (未実装)
+#
+# 使用方法:
+#   gcloud workflows run data-pipeline \
+#     --data='{"mode": "replace"}'
+#
+#   gcloud workflows run data-pipeline \
+#     --data='{"mode": "append", "target_month": "202511"}'
+# ============================================================
+
+main:
+  params: [args]
+  steps:
+    # ============================================================
+    # 初期化: パラメータ設定
+    # ============================================================
+    - init:
+        assign:
+          - project_id: "data-platform-prod-475201"
+          - region: "asia-northeast1"
+          - mode: ${default(map.get(args, "mode"), "replace")}
+          - target_month: ${default(map.get(args, "target_month"), "")}
+          - drive_to_gcs_url: "https://drive-to-gcs-102847004309.asia-northeast1.run.app"
+          - spreadsheet_to_bq_url: "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app"
+          - gcs_to_bq_url: "https://gcs-to-bq-102847004309.asia-northeast1.run.app"
+          - dwh_job_name: "dwh-datamart-update"
+          - workflow_start_time: ${sys.now()}
+
+    - log_start:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            message: "パイプライン開始"
+            mode: ${mode}
+            target_month: ${target_month}
+            timestamp: ${workflow_start_time}
+
+    # ============================================================
+    # Step 1: drive-to-gcs (Google Drive → GCS)
+    # ============================================================
+    - step1_drive_to_gcs:
+        try:
+          call: http.post
+          args:
+            url: ${drive_to_gcs_url + "/sync"}
+            query:
+              mode: ${mode}
+              target_month: ${target_month}
+            timeout: 1800  # 30分
+            auth:
+              type: OIDC
+          result: drive_result
+        except:
+          as: e
+          steps:
+            - log_drive_error:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    step: "drive-to-gcs"
+                    error: ${e}
+            - raise_drive_error:
+                raise: ${e}
+
+    - check_drive_result:
+        switch:
+          - condition: ${drive_result.code >= 400 and drive_result.code != 207}
+            steps:
+              - log_drive_failure:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      step: "drive-to-gcs"
+                      status_code: ${drive_result.code}
+                      errors: ${drive_result.body.errors}
+              - raise_drive_failure:
+                  raise:
+                    code: ${drive_result.code}
+                    message: "drive-to-gcs failed"
+                    errors: ${drive_result.body.errors}
+
+    - log_drive_success:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "drive-to-gcs"
+            status: "completed"
+            processed: ${drive_result.body.total_processed}
+            failed: ${len(drive_result.body.total_failed)}
+
+    # ============================================================
+    # Step 2: 待機 (2分)
+    # ============================================================
+    - step2_wait:
+        call: sys.sleep
+        args:
+          seconds: 120
+
+    # ============================================================
+    # Step 3: spreadsheet-to-bq (スプレッドシート → GCS)
+    # ============================================================
+    - step3_spreadsheet_to_bq:
+        try:
+          call: http.post
+          args:
+            url: ${spreadsheet_to_bq_url + "/sync"}
+            timeout: 900  # 15分
+            auth:
+              type: OIDC
+          result: spreadsheet_result
+        except:
+          as: e
+          steps:
+            - log_spreadsheet_error:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    step: "spreadsheet-to-bq"
+                    error: ${e}
+            - raise_spreadsheet_error:
+                raise: ${e}
+
+    - check_spreadsheet_result:
+        switch:
+          - condition: ${spreadsheet_result.code >= 400 and spreadsheet_result.code != 207}
+            steps:
+              - log_spreadsheet_failure:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      step: "spreadsheet-to-bq"
+                      status_code: ${spreadsheet_result.code}
+              - raise_spreadsheet_failure:
+                  raise:
+                    code: ${spreadsheet_result.code}
+                    message: "spreadsheet-to-bq failed"
+
+    - log_spreadsheet_success:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "spreadsheet-to-bq"
+            status: "completed"
+            success_count: ${len(spreadsheet_result.body.success)}
+            failed_count: ${len(spreadsheet_result.body.failed)}
+
+    # ============================================================
+    # Step 4: 待機 (2分)
+    # ============================================================
+    - step4_wait:
+        call: sys.sleep
+        args:
+          seconds: 120
+
+    # ============================================================
+    # Step 5: gcs-to-bq (GCS → BigQuery)
+    # ============================================================
+    - step5_gcs_to_bq:
+        try:
+          call: http.post
+          args:
+            url: ${gcs_to_bq_url + "/load"}
+            timeout: 1800  # 30分
+            auth:
+              type: OIDC
+          result: gcs_to_bq_result
+        except:
+          as: e
+          steps:
+            - log_gcs_to_bq_error:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    step: "gcs-to-bq"
+                    error: ${e}
+            - raise_gcs_to_bq_error:
+                raise: ${e}
+
+    - check_gcs_to_bq_result:
+        switch:
+          - condition: ${gcs_to_bq_result.code >= 400 and gcs_to_bq_result.code != 207}
+            steps:
+              - log_gcs_to_bq_failure:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      step: "gcs-to-bq"
+                      status_code: ${gcs_to_bq_result.code}
+              - raise_gcs_to_bq_failure:
+                  raise:
+                    code: ${gcs_to_bq_result.code}
+                    message: "gcs-to-bq failed"
+
+    - log_gcs_to_bq_success:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "gcs-to-bq"
+            status: "completed"
+
+    # ============================================================
+    # Step 6: 待機 (3分)
+    # ============================================================
+    - step6_wait:
+        call: sys.sleep
+        args:
+          seconds: 180
+
+    # ============================================================
+    # Step 7: dwh-datamart-update (Cloud Run Job)
+    # ============================================================
+    - step7_execute_job:
+        try:
+          call: googleapis.run.v1.namespaces.jobs.run
+          args:
+            name: ${"namespaces/" + project_id + "/jobs/" + dwh_job_name}
+            location: ${region}
+          result: job_execution
+        except:
+          as: e
+          steps:
+            - log_job_start_error:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    step: "dwh-datamart-update"
+                    phase: "job_start"
+                    error: ${e}
+            - raise_job_start_error:
+                raise: ${e}
+
+    - log_job_started:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "dwh-datamart-update"
+            status: "job_started"
+            execution_name: ${job_execution.metadata.name}
+
+    # Job完了を待機（ポーリング）
+    - wait_for_job_completion:
+        call: poll_job_status
+        args:
+          project_id: ${project_id}
+          region: ${region}
+          job_name: ${dwh_job_name}
+          execution_name: ${job_execution.metadata.name}
+        result: job_final_status
+
+    - check_job_result:
+        switch:
+          - condition: ${job_final_status != "Succeeded"}
+            steps:
+              - log_job_failure:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      step: "dwh-datamart-update"
+                      status: ${job_final_status}
+              - raise_job_failure:
+                  raise:
+                    message: "dwh-datamart-update job failed"
+                    status: ${job_final_status}
+
+    - log_job_success:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "dwh-datamart-update"
+            status: "completed"
+
+    # ============================================================
+    # Step 8: 完了通知 (未実装)
+    # ============================================================
+    - step8_completion:
+        assign:
+          - workflow_end_time: ${sys.now()}
+          - total_duration: ${workflow_end_time - workflow_start_time}
+
+    - log_pipeline_complete:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            message: "パイプライン完了"
+            mode: ${mode}
+            target_month: ${target_month}
+            total_duration_seconds: ${total_duration}
+            steps_completed:
+              - "drive-to-gcs"
+              - "spreadsheet-to-bq"
+              - "gcs-to-bq"
+              - "dwh-datamart-update"
+
+    # 結果を返す
+    - return_result:
+        return:
+          status: "SUCCESS"
+          mode: ${mode}
+          target_month: ${target_month}
+          total_duration_seconds: ${total_duration}
+          steps:
+            drive_to_gcs:
+              processed: ${drive_result.body.total_processed}
+              failed: ${len(drive_result.body.total_failed)}
+            spreadsheet_to_bq:
+              success: ${len(spreadsheet_result.body.success)}
+              failed: ${len(spreadsheet_result.body.failed)}
+            gcs_to_bq:
+              status: "completed"
+            dwh_datamart_update:
+              status: ${job_final_status}
+
+# ============================================================
+# サブワークフロー: Cloud Run Jobのステータスをポーリング
+# ============================================================
+poll_job_status:
+  params: [project_id, region, job_name, execution_name]
+  steps:
+    - init_polling:
+        assign:
+          - max_attempts: 60  # 最大60回（30分）
+          - attempt: 0
+          - poll_interval: 30  # 30秒間隔
+
+    - poll_loop:
+        switch:
+          - condition: ${attempt < max_attempts}
+            steps:
+              - get_execution_status:
+                  try:
+                    call: googleapis.run.v1.namespaces.executions.get
+                    args:
+                      name: ${"namespaces/" + project_id + "/executions/" + execution_name}
+                      location: ${region}
+                    result: execution_status
+                  except:
+                    as: e
+                    steps:
+                      - log_poll_error:
+                          call: sys.log
+                          args:
+                            severity: "WARNING"
+                            json:
+                              message: "Failed to get job status"
+                              attempt: ${attempt}
+                              error: ${e}
+                      - increment_on_error:
+                          assign:
+                            - attempt: ${attempt + 1}
+                      - wait_on_error:
+                          call: sys.sleep
+                          args:
+                            seconds: ${poll_interval}
+                      - continue_poll_on_error:
+                          next: poll_loop
+
+              - check_completion:
+                  switch:
+                    # 完了（成功）
+                    - condition: ${execution_status.status.conditions[0].type == "Completed" and execution_status.status.conditions[0].status == "True"}
+                      return: "Succeeded"
+                    # 失敗
+                    - condition: ${execution_status.status.conditions[0].type == "Failed"}
+                      return: "Failed"
+                    # まだ実行中
+                    - condition: true
+                      steps:
+                        - log_still_running:
+                            call: sys.log
+                            args:
+                              severity: "INFO"
+                              json:
+                                message: "Job still running"
+                                attempt: ${attempt}
+                        - increment_attempt:
+                            assign:
+                              - attempt: ${attempt + 1}
+                        - wait_before_next_poll:
+                            call: sys.sleep
+                            args:
+                              seconds: ${poll_interval}
+                        - continue_polling:
+                            next: poll_loop
+
+    # タイムアウト
+    - timeout:
+        return: "Timeout"

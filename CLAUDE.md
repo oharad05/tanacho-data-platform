@@ -316,3 +316,70 @@ bash sql/scripts/update_datamart.sh
 - クエリコスト削減（パーティションプルーニング）
 - パフォーマンス向上
 - 月指定Insertの高速化
+
+---
+
+## Cloud Workflows パイプライン定義
+
+### 概要
+データパイプライン全体を Cloud Workflows で管理し、各ステップを順次実行する。
+
+### パイプラインフロー
+
+```
+Cloud Workflows
+    ├── Step 1: drive-to-gcs
+    │    - 1-1: 整合性確認
+    │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート
+    │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート
+    ├── Step 2: 待機 (2分)
+    ├── Step 3: spreadsheet-to-bq
+    │    - 3-1: 整合性確認
+    │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート
+    │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート
+    ├── Step 4: 待機 (2分)
+    ├── Step 5: gcs-to-bq
+    │    - 5-1: 整合性確認
+    │      - カラムの不整合が起きている場合に、起きているテーブルと不整合が起きているカラムをアラート
+    │      - 何らかの原因でBigqueryへの取り込みエラーがあった場合、そのテーブル名をアラート
+    ├── Step 6: 待機 (3分)
+    ├── Step 7: dwh-datamart-update (Job実行・完了待ち)
+    │    - corporate_data配下のテーブルをcorporate_data_bkにコピー
+    │    - コピーしたテーブルと今回取り込んだあとのcorporate_dataの件数を比較し、テーブルごとの件数をloggingに出力
+    │    - 7-1: 整合性確認
+    │      - main_category='その他'に値が入っている場合alert
+    │      - corporate_data配下各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し、発生していたらアラート
+    └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に)
+```
+
+### Cloud Runサービス一覧
+
+| サービス名 | URL | 説明 |
+|-----------|-----|------|
+| drive-to-gcs | https://drive-to-gcs-102847004309.asia-northeast1.run.app | Google Drive → GCS |
+| spreadsheet-to-bq | https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app | スプレッドシート → GCS |
+| gcs-to-bq | https://gcs-to-bq-102847004309.asia-northeast1.run.app | GCS → BigQuery |
+| dwh-datamart-update | Cloud Run Job | DWH/DataMart更新 |
+
+### drive-to-gcs パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|-----------|------|-----------|
+| mode | `replace`(全データ洗い替え) / `append`(指定月のみ追加) | replace |
+| target_month | 対象月（YYYYMM形式、appendモード時に使用） | - |
+
+### アラート・通知設定
+
+- **アラート出力先**: Cloud Logging（構造化ログ）
+- **通知チャンネル**: Cloud Monitoring → Email (fiby2@tanacho.com)
+- **完了通知**: y.tanaka@tanacho.com
+
+### ユニークキー定義
+
+ユニークキーは `common/table_unique_keys.yml` で管理。
+重複チェックはこの定義に基づいて実行される。
+
+### エラーハンドリング
+
+- いずれかのステップでエラーが発生した場合、ワークフロー全体を停止
+- エラー内容は Cloud Logging に出力

@@ -42,6 +42,33 @@ PROJECT_ID = "data-platform-prod-475201"
 GCS_BUCKET = "data-platform-landing-prod"
 SQL_PREFIX = "sql/split_dwh_dm"
 
+# バックアップ設定
+SOURCE_DATASET = "corporate_data"
+BACKUP_DATASET = "corporate_data_bk"
+
+# corporate_dataのテーブル一覧（バックアップ対象）
+CORPORATE_DATA_TABLES = [
+    "billing_balance",
+    "construction_progress_days_amount",
+    "construction_progress_days_final_date",
+    "customer_sales_target_and_achievements",
+    "department_summary",
+    "internal_interest",
+    "ledger_income",
+    "ledger_loss",
+    "management_materials_current_month",
+    "ms_allocation_ratio",
+    "profit_plan_term",
+    "profit_plan_term_fukuoka",
+    "profit_plan_term_nagasaki",
+    "sales_target_and_achievements",
+    "ss_gs_sales_profit",
+    "ss_inventory_advance_fukuoka",
+    "ss_inventory_advance_nagasaki",
+    "ss_inventory_advance_tokyo",
+    "stocks",
+]
+
 # DWH SQLファイル（実行順序）
 DWH_SQL_FILES = [
     "dwh_sales_actual.sql",
@@ -92,6 +119,113 @@ def execute_sql(bq_client: bigquery.Client, sql: str, description: str) -> bool:
         print(f"  ✗ エラー: {description}")
         print(f"    {str(e)}")
         return False
+
+
+def backup_corporate_data(bq_client: bigquery.Client) -> Dict[str, int]:
+    """
+    corporate_dataのテーブルをcorporate_data_bkにコピーし、件数を返す
+
+    Returns:
+        テーブル名をキー、件数を値とする辞書
+    """
+    print("\n" + "=" * 50)
+    print("corporate_data → corporate_data_bk バックアップ開始")
+    print("=" * 50)
+
+    row_counts = {}
+
+    for table_name in CORPORATE_DATA_TABLES:
+        source_table = f"{PROJECT_ID}.{SOURCE_DATASET}.{table_name}"
+        backup_table = f"{PROJECT_ID}.{BACKUP_DATASET}.{table_name}"
+
+        try:
+            # テーブルをコピー（上書き）
+            copy_sql = f"""
+            CREATE OR REPLACE TABLE `{backup_table}` AS
+            SELECT * FROM `{source_table}`
+            """
+            bq_client.query(copy_sql).result()
+
+            # 件数を取得
+            count_sql = f"SELECT COUNT(*) as cnt FROM `{source_table}`"
+            result = bq_client.query(count_sql).result()
+            count = list(result)[0].cnt
+            row_counts[table_name] = count
+
+            print(f"  ✓ {table_name}: {count:,} 件")
+
+        except Exception as e:
+            print(f"  ✗ {table_name}: エラー - {str(e)}")
+            row_counts[table_name] = -1  # エラーを示す
+
+    print(f"\nバックアップ完了: {len([v for v in row_counts.values() if v >= 0])}/{len(CORPORATE_DATA_TABLES)} テーブル")
+    return row_counts
+
+
+def compare_row_counts(bq_client: bigquery.Client, backup_counts: Dict[str, int]) -> None:
+    """
+    バックアップ時の件数と現在の件数を比較し、ログに出力
+
+    Args:
+        bq_client: BigQueryクライアント
+        backup_counts: バックアップ時の件数
+    """
+    print("\n" + "=" * 50)
+    print("テーブル件数比較（バックアップ vs 現在）")
+    print("=" * 50)
+
+    comparison_results = []
+
+    for table_name in CORPORATE_DATA_TABLES:
+        backup_count = backup_counts.get(table_name, -1)
+
+        try:
+            # 現在の件数を取得
+            source_table = f"{PROJECT_ID}.{SOURCE_DATASET}.{table_name}"
+            count_sql = f"SELECT COUNT(*) as cnt FROM `{source_table}`"
+            result = bq_client.query(count_sql).result()
+            current_count = list(result)[0].cnt
+
+            diff = current_count - backup_count if backup_count >= 0 else None
+            diff_str = f"{diff:+,}" if diff is not None else "N/A"
+
+            comparison_results.append({
+                "table": table_name,
+                "backup_count": backup_count,
+                "current_count": current_count,
+                "diff": diff
+            })
+
+            # 差分がある場合は目立つように表示
+            if diff and diff != 0:
+                print(f"  📊 {table_name}: {backup_count:,} → {current_count:,} ({diff_str})")
+            else:
+                print(f"  {table_name}: {backup_count:,} → {current_count:,} ({diff_str})")
+
+        except Exception as e:
+            print(f"  ✗ {table_name}: 件数取得エラー - {str(e)}")
+            comparison_results.append({
+                "table": table_name,
+                "backup_count": backup_count,
+                "current_count": -1,
+                "diff": None,
+                "error": str(e)
+            })
+
+    # 構造化ログとして出力
+    log_entry = {
+        "severity": "INFO",
+        "message": "テーブル件数比較結果",
+        "labels": {
+            "service": "dwh-datamart-update",
+            "operation": "row_count_comparison"
+        },
+        "jsonPayload": {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "comparison": comparison_results
+        }
+    }
+    validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
 
 
 def update_dwh(bq_client: bigquery.Client) -> bool:
@@ -288,26 +422,39 @@ def run_datamart_validation(bq_client: bigquery.Client) -> bool:
 def main():
     """メイン処理"""
     update_type = os.environ.get("UPDATE_TYPE", "all").lower()
+    enable_backup = os.environ.get("ENABLE_BACKUP", "true").lower() == "true"
     print(f"更新タイプ: {update_type}")
     print(f"プロジェクト: {PROJECT_ID}")
     print(f"SQLソース: gs://{GCS_BUCKET}/{SQL_PREFIX}/")
     print(f"バリデーション: {'有効' if VALIDATION_ENABLED else '無効'}")
+    print(f"バックアップ: {'有効' if enable_backup else '無効'}")
 
     bq_client = bigquery.Client(project=PROJECT_ID)
 
     dwh_success = True
     datamart_success = True
     validation_success = True
+    backup_counts = {}
 
+    # Step 1: corporate_data → corporate_data_bk へバックアップ
+    if enable_backup:
+        backup_counts = backup_corporate_data(bq_client)
+
+    # Step 2: DWH更新
     if update_type in ("dwh", "all"):
         dwh_success = update_dwh(bq_client)
 
+    # Step 3: DataMart更新
     if update_type in ("datamart", "all"):
         datamart_success = update_datamart(bq_client)
 
         # DataMart更新後にバリデーションを実行
         if datamart_success and VALIDATION_ENABLED:
             validation_success = run_datamart_validation(bq_client)
+
+    # Step 4: 件数比較（バックアップが有効な場合）
+    if enable_backup and backup_counts:
+        compare_row_counts(bq_client, backup_counts)
 
     print("\n" + "=" * 50)
     if dwh_success and datamart_success:

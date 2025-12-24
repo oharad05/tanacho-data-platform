@@ -14,10 +14,24 @@ DWH: 損益計算書 入力シート - 全支店統合版
   - branch: 支店名(東京支店、長崎支店、福岡支店)
   - detail_category: 詳細分類(部門・担当者名)
   - value: 金額(円) または 比率(売上総利益率の場合)
+  - display_flag: 表示フラグ（工事営業部計、硝子建材営業部計、長崎支店計、福岡支店計の場合1）
 ============================================================
 */
 
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.dwh_profit_plan_term_all` AS
+
+SELECT
+  period,
+  item,
+  branch,
+  detail_category,
+  value,
+  -- 表示フラグ: 工事営業部計、硝子建材営業部計、長崎支店計、福岡支店計の場合1
+  CASE
+    WHEN detail_category IN ('工事営業部計', '硝子建材営業部計', '長崎支店計', '福岡支店計') THEN 1
+    ELSE 0
+  END AS display_flag
+FROM (
 
 -- 東京支店
 SELECT
@@ -703,4 +717,6 @@ SELECT
   fukuhoku_center AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE fukuhoku_center IS NOT NULL
+
+) AS subquery
 ;

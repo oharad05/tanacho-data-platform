@@ -1,0 +1,267 @@
+# ============================================================
+# テーブルユニークキー定義
+# ============================================================
+# 用途:
+#   - DWH/DM更新後の重複チェック
+#   - Cloud Workflowsでの整合性確認
+#
+# フォーマット:
+#   table_name:
+#     dataset: データセット名
+#     unique_keys: [key1, key2, ...]  # 空の場合は重複チェックスキップ
+#     type: cumulative(累積型) / monthly(単月型)
+#     source_file: 元ファイル名
+# ============================================================
+
+# ============================================================
+# corporate_data (生データ層) - Driveから取得
+# ============================================================
+
+billing_balance:
+  dataset: corporate_data
+  unique_keys:
+    - sales_month
+    - branch_code
+    - branch_name
+  type: cumulative
+  source_file: "3_請求残高一覧表（月間）.xlsx"
+
+construction_progress_days_amount:
+  dataset: corporate_data
+  unique_keys:
+    - property_period
+    - branch_code
+    - staff_code
+    - property_number
+    - customer_code
+    - contract_date
+  type: cumulative
+  source_file: "工事進捗日数金額.xlsx"
+
+construction_progress_days_final_date:
+  dataset: corporate_data
+  unique_keys:
+    - final_billing_sales_date
+    - property_number
+    - property_data_classification
+  type: cumulative
+  source_file: "工事進捗日数最終日.xlsx"
+  note: "重複排除未対応のため、クエリ側でDISTINCT必要"
+
+customer_sales_target_and_achievements:
+  dataset: corporate_data
+  unique_keys:
+    - sales_accounting_period
+    - branch_code
+    - department_code
+    - staff_code
+    - customer_code
+  type: monthly
+  source_file: "得意先別売上データ"
+
+department_summary:
+  dataset: corporate_data
+  unique_keys:
+    - sales_accounting_period
+    - code
+  type: monthly
+  source_file: "6_部門集計表_YYYYMM.xlsx"
+
+internal_interest:
+  dataset: corporate_data
+  unique_keys:
+    - year_month
+    - branch
+    - category
+    - breakdown
+  type: monthly
+  source_file: "7_社内金利計算表.xlsx"
+
+ledger_income:
+  dataset: corporate_data
+  unique_keys:
+    - accounting_month
+    - slip_date
+    - slip_no
+    - classification_type
+    - counterpart_department_code
+    - own_department_code
+  type: monthly
+  source_file: "4_元帳_雑収入.xlsx"
+  note: "slip_noだけでは一意にならない可能性あり"
+
+ledger_loss:
+  dataset: corporate_data
+  unique_keys:
+    - accounting_month
+    - slip_date
+    - slip_no
+    - classification_type
+    - counterpart_department_code
+    - own_department_code
+  type: monthly
+  source_file: "16_元帳_雑損失.xlsx"
+  note: "slip_noだけでは一意にならない可能性あり"
+
+ms_allocation_ratio:
+  dataset: corporate_data
+  unique_keys:
+    - year_month
+    - branch
+    - department
+    - category
+  type: cumulative
+  source_file: "10_案分比率マスタ.xlsx"
+
+profit_plan_term:
+  dataset: corporate_data
+  unique_keys:
+    - period
+    - item
+  type: cumulative
+  source_file: "12_損益5期目標.xlsx（東京支店目標103期）"
+
+profit_plan_term_nagasaki:
+  dataset: corporate_data
+  unique_keys:
+    - period
+    - item
+  type: cumulative
+  source_file: "12_損益5期目標.xlsx（長崎支店目標103期）"
+
+profit_plan_term_fukuoka:
+  dataset: corporate_data
+  unique_keys:
+    - period
+    - item
+  type: cumulative
+  source_file: "12_損益5期目標.xlsx（福岡支店目標103期）"
+
+sales_target_and_achievements:
+  dataset: corporate_data
+  unique_keys:
+    - sales_accounting_period
+    - branch_code
+    - department_code
+    - staff_code
+  type: monthly
+  source_file: "1_全支店[1.売上管理] 担当者売上目標／実績データ.xlsx"
+
+stocks:
+  dataset: corporate_data
+  unique_keys:
+    - year_month
+    - branch
+    - department
+    - category
+  type: monthly
+  source_file: "9_在庫.xlsx"
+
+# ============================================================
+# corporate_data (生データ層) - スプレッドシートから取得
+# ============================================================
+
+ss_gs_sales_profit:
+  dataset: corporate_data
+  unique_keys:
+    - posting_month
+    - branch_name
+    - sales_office
+  type: monthly
+  source_file: "損益計算書 入力シート（福岡支店）- システム利用シート_GS売上粗利"
+
+ss_inventory_advance_tokyo:
+  dataset: corporate_data
+  unique_keys:
+    - posting_month
+    - branch_name
+    - sales_office
+    - category
+  type: monthly
+  source_file: "損益計算書 入力シート（東京支店）- システム利用シート_在庫損益・前受け金"
+
+ss_inventory_advance_nagasaki:
+  dataset: corporate_data
+  unique_keys:
+    - posting_month
+    - branch_name
+    - sales_office
+    - category
+  type: monthly
+  source_file: "損益計算書 入力シート（長崎支店）- システム利用シート_在庫損益・前受け金"
+
+ss_inventory_advance_fukuoka:
+  dataset: corporate_data
+  unique_keys:
+    - posting_month
+    - branch_name
+    - sales_office
+    - category
+  type: monthly
+  source_file: "損益計算書 入力シート（福岡支店）- システム利用シート_在庫損益・前受け金"
+
+management_materials_current_month:
+  dataset: corporate_data
+  unique_keys:
+    - date
+    - main_category
+    - secondary_category
+    - main_department
+    - secondary_department
+  type: monthly
+  source_file: "経営資料（当月）スプレッドシート"
+
+# ============================================================
+# corporate_data_dwh (DWH層)
+# ============================================================
+
+dwh_sales_actual:
+  dataset: corporate_data_dwh
+  unique_keys:
+    - year_month
+    - branch_code
+    - department_code
+    - staff_code
+  type: derived
+
+dwh_sales_target:
+  dataset: corporate_data_dwh
+  unique_keys:
+    - year_month
+    - branch_code
+    - department_code
+  type: derived
+
+# ============================================================
+# corporate_data_dm (DataMart層)
+# ============================================================
+
+management_documents_all_period_all:
+  dataset: corporate_data_dm
+  unique_keys:
+    - date
+    - main_category
+    - secondary_category
+    - main_department
+    - secondary_department
+  type: derived
+  alert_conditions:
+    - field: main_category
+      condition: equals
+      value: "その他"
+      message: "main_category='その他'にデータが存在します"
+
+cumulative_management_documents_all_period_all:
+  dataset: corporate_data_dm
+  unique_keys:
+    - date
+    - main_category
+    - secondary_category
+    - main_department
+    - secondary_department
+  type: derived
+  alert_conditions:
+    - field: main_category
+      condition: equals
+      value: "その他"
+      message: "main_category='その他'にデータが存在します"
