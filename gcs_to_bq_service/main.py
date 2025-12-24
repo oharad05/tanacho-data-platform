@@ -19,8 +19,18 @@ import traceback
 import logging
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, Optional, Any, List
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """date/datetime オブジェクトを文字列に変換するJSONエンコーダー"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, date):
+            return obj.isoformat()
+        return super().default(obj)
 from flask import Flask, request, jsonify
 from google.cloud import storage
 from google.cloud import bigquery
@@ -139,11 +149,11 @@ def log_validation_result(result: Dict[str, Any]) -> None:
     }
 
     if result.get("status") == "ERROR":
-        validation_logger.error(json.dumps(log_entry, ensure_ascii=False))
+        validation_logger.error(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
     elif result.get("warnings"):
-        validation_logger.warning(json.dumps(log_entry, ensure_ascii=False))
+        validation_logger.warning(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
     else:
-        validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
+        validation_logger.info(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
 
 
 def _format_validation_message(result: Dict[str, Any]) -> str:

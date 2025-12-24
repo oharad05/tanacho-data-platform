@@ -163,10 +163,10 @@ def _iter_files(drive, folder_id):
 
 def _download_xlsx(drive, file_id, name_hint=None):
     """Drive上の .xlsx をそのままダウンロード"""
-    meta = drive.files().get(fileId=file_id, fields="name").execute()
+    meta = drive.files().get(fileId=file_id, fields="name", supportsAllDrives=True).execute()
     name = meta.get("name", name_hint or "file")
     out_name = name if name.lower().endswith(".xlsx") else re.sub(r"\.[^.]+$", "", name) + ".xlsx"
-    req = drive.files().get_media(fileId=file_id)
+    req = drive.files().get_media(fileId=file_id, supportsAllDrives=True)
     buf = io.BytesIO(req.execute()); buf.seek(0)
     return out_name, buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

@@ -12,6 +12,7 @@ GCSからSQLファイルを読み込み、BigQueryで順次実行するCloud Run
 
 バリデーション機能:
   - DataMart更新後に「secondary_department='その他'」のvalue>0をチェック
+  - corporate_dataテーブルの重複チェック
   - 結果はGoogle Cloud Loggingに出力
 """
 
@@ -19,6 +20,7 @@ import os
 import sys
 import json
 import logging
+import yaml
 from datetime import datetime
 from typing import Dict, Any, List
 from google.cloud import bigquery
@@ -97,6 +99,28 @@ DATAMART_SQL_FILES = [
     "cumulative_management_documents_all_period_all.sql",
     "cumulative_management_documents_all_period_all_for_display.sql",
 ]
+
+# ユニークキー定義ファイルのGCSパス
+TABLE_UNIQUE_KEYS_GCS_PATH = "config/table_unique_keys.yml"
+
+
+def load_table_unique_keys() -> Dict[str, Dict]:
+    """
+    GCSからテーブルのユニークキー定義を読み込む
+
+    Returns:
+        テーブル名をキー、設定を値とする辞書
+    """
+    try:
+        client = storage.Client(project=PROJECT_ID)
+        bucket = client.bucket(GCS_BUCKET)
+        blob = bucket.blob(TABLE_UNIQUE_KEYS_GCS_PATH)
+        yaml_content = blob.download_as_text()
+        config = yaml.safe_load(yaml_content)
+        return config.get("tables", {})
+    except Exception as e:
+        print(f"[WARN] ユニークキー定義の読み込みに失敗: {e}")
+        return {}
 
 
 def get_sql_from_gcs(bucket_name: str, blob_path: str) -> str:
@@ -226,6 +250,125 @@ def compare_row_counts(bq_client: bigquery.Client, backup_counts: Dict[str, int]
         }
     }
     validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
+
+
+def check_duplicates(bq_client: bigquery.Client) -> Dict[str, Any]:
+    """
+    corporate_dataテーブルの重複をチェック
+
+    Args:
+        bq_client: BigQueryクライアント
+
+    Returns:
+        重複チェック結果の辞書
+    """
+    print("\n" + "=" * 50)
+    print("corporate_data 重複チェック開始")
+    print("=" * 50)
+
+    # ユニークキー定義を読み込み
+    table_configs = load_table_unique_keys()
+
+    if not table_configs:
+        print("  ⚠️  ユニークキー定義が見つかりません")
+        return {"status": "SKIPPED", "reason": "no_config"}
+
+    duplicate_results = []
+    has_duplicates = False
+
+    for table_name in CORPORATE_DATA_TABLES:
+        if table_name not in table_configs:
+            print(f"  ⚠️  {table_name}: ユニークキー未定義（スキップ）")
+            continue
+
+        config = table_configs[table_name]
+        unique_keys = config.get("unique_keys", [])
+
+        if not unique_keys:
+            print(f"  ⚠️  {table_name}: ユニークキーが空（スキップ）")
+            continue
+
+        try:
+            # ユニークキーを結合してCONCATで重複チェック
+            table_id = f"{PROJECT_ID}.{SOURCE_DATASET}.{table_name}"
+
+            # カラムの存在確認
+            table = bq_client.get_table(table_id)
+            existing_columns = {field.name for field in table.schema}
+            valid_keys = [k for k in unique_keys if k in existing_columns]
+
+            if len(valid_keys) != len(unique_keys):
+                missing = set(unique_keys) - set(valid_keys)
+                print(f"  ⚠️  {table_name}: カラム不足 {missing}（スキップ）")
+                continue
+
+            # 重複チェッククエリを生成
+            key_concat = ", '-', ".join([f"CAST({k} AS STRING)" for k in valid_keys])
+            query = f"""
+            SELECT
+                COUNT(*) as total_rows,
+                COUNT(DISTINCT CONCAT({key_concat})) as unique_keys,
+                COUNT(*) - COUNT(DISTINCT CONCAT({key_concat})) as duplicates
+            FROM `{table_id}`
+            """
+
+            result = bq_client.query(query).result()
+            row = list(result)[0]
+
+            total_rows = row.total_rows
+            unique_count = row.unique_keys
+            duplicates = row.duplicates
+
+            result_entry = {
+                "table": table_name,
+                "total_rows": total_rows,
+                "unique_keys": unique_count,
+                "duplicates": duplicates,
+                "unique_key_columns": valid_keys
+            }
+            duplicate_results.append(result_entry)
+
+            if duplicates > 0:
+                has_duplicates = True
+                print(f"  ❌ {table_name}: {total_rows:,}行 / ユニーク{unique_count:,} / 重複{duplicates:,}")
+            else:
+                print(f"  ✅ {table_name}: {total_rows:,}行 / 重複なし")
+
+        except Exception as e:
+            print(f"  ✗ {table_name}: チェックエラー - {str(e)}")
+            duplicate_results.append({
+                "table": table_name,
+                "error": str(e)
+            })
+
+    # 結果サマリー
+    tables_with_duplicates = [r for r in duplicate_results if r.get("duplicates", 0) > 0]
+    print(f"\n重複チェック完了: {len(duplicate_results)}テーブル中 {len(tables_with_duplicates)}テーブルに重複あり")
+
+    # 構造化ログとして出力
+    result = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "service": "dwh-datamart-update",
+        "validation_type": "duplicate_check",
+        "status": "ERROR" if has_duplicates else "OK",
+        "tables_checked": len(duplicate_results),
+        "tables_with_duplicates": len(tables_with_duplicates),
+        "details": duplicate_results
+    }
+
+    log_entry = {
+        "severity": "ERROR" if has_duplicates else "INFO",
+        "message": f"重複チェック結果: {len(tables_with_duplicates)}テーブルに重複あり" if has_duplicates else "重複チェック結果: 重複なし",
+        "labels": {
+            "service": "dwh-datamart-update",
+            "validation_type": "duplicate_check",
+            "status": result["status"]
+        },
+        "jsonPayload": result
+    }
+    validation_logger.info(json.dumps(log_entry, ensure_ascii=False))
+
+    return result
 
 
 def update_dwh(bq_client: bigquery.Client) -> bool:
@@ -455,6 +598,12 @@ def main():
     # Step 4: 件数比較（バックアップが有効な場合）
     if enable_backup and backup_counts:
         compare_row_counts(bq_client, backup_counts)
+
+    # Step 5: 重複チェック
+    if VALIDATION_ENABLED:
+        duplicate_result = check_duplicates(bq_client)
+        if duplicate_result.get("status") == "ERROR":
+            print("\n⚠️  重複が検出されました（警告のみ）")
 
     print("\n" + "=" * 50)
     if dwh_success and datamart_success:

@@ -99,6 +99,11 @@ CUMULATIVE_TABLE_CONFIG = {
         # 年月・支店・部署・カテゴリでユニーク
         "unique_keys": ["year_month", "branch", "department", "category"],
     },
+    "construction_progress_days_final_date": {
+        # ソース: 工事進捗日数最終日.xlsx
+        # 最終請求売上日・物件番号・物件データ区分でユニーク
+        "unique_keys": ["final_billing_sales_date", "property_number", "property_data_classification"],
+    },
 }
 
 # テーブル定義とパーティション列のマッピング
