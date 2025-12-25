@@ -33,7 +33,7 @@ class DataValidator:
     def __init__(self, service_name: str):
         """
         Args:
-            service_name: サービス名（drive-to-gcs, spreadsheet-to-bq, gcs-to-bq）
+            service_name: サービス名（drive-to-gcs, spreadsheet-to-gcs, gcs-to-bq）
         """
         self.service_name = service_name
         self.logger = logging.getLogger(service_name)

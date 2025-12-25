@@ -334,7 +334,7 @@ Cloud Workflows
     │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート (to workflows)
     │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート (to workflows)
     ├── Step 2: 待機 (2分)
-    ├── Step 3: spreadsheet-to-bq
+    ├── Step 3: spreadsheet-to-gcs
     │    - 3-1: 整合性確認
     │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート (to workflows + to logging)
     │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート (to workflows)
@@ -377,7 +377,7 @@ jsonPayload.status="ERROR"
 | サービス名 | URL | 説明 |
 |-----------|-----|------|
 | drive-to-gcs | https://drive-to-gcs-102847004309.asia-northeast1.run.app | Google Drive → GCS |
-| spreadsheet-to-bq | https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app | スプレッドシート → GCS |
+| spreadsheet-to-gcs | https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app | スプレッドシート → GCS |
 | gcs-to-bq | https://gcs-to-bq-102847004309.asia-northeast1.run.app | GCS → BigQuery |
 | dwh-datamart-update | Cloud Run Job | DWH/DataMart更新 |
 

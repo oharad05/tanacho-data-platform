@@ -145,7 +145,7 @@ Google スプレッドシートのデータをBigQueryに連携します。
 以下のコマンドをCloud Shellで実行します。
 
 ```bash
-curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/sync" \
+curl -X POST "https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app/sync" \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json"
 ```
@@ -177,7 +177,7 @@ curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/syn
 gcloud config set project data-platform-prod-475201
 
 # スプレッドシート同期
-curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/sync" \
+curl -X POST "https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app/sync" \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json"
 ```
@@ -262,7 +262,7 @@ Looker Studio (ダッシュボード)
 2. Cloud Workflows: data-pipeline（一括実行）
    ├─ Step 1: Drive → GCS (drive-to-gcs)
    ├─ Step 2: 待機 (2分)
-   ├─ Step 3: スプレッドシート → GCS (spreadsheet-to-bq)
+   ├─ Step 3: スプレッドシート → GCS (spreadsheet-to-gcs)
    ├─ Step 4: 待機 (2分)
    ├─ Step 5: GCS → BigQuery (gcs-to-bq)
    ├─ Step 6: 待機 (3分)
@@ -287,7 +287,7 @@ Looker Studio (ダッシュボード)
 **Cloud Run Services**:
 - `drive-to-gcs` (asia-northeast1) - run_service/main.py
 - `gcs-to-bq` (asia-northeast1) - gcs_to_bq_service/main.py
-- `spreadsheet-to-bq` (asia-northeast1) - spreadsheet_service/main.py
+- `spreadsheet-to-gcs` (asia-northeast1) - spreadsheet_service/main.py
 
 **Cloud Run Jobs**:
 - `dwh-datamart-update` (asia-northeast1) - dwh_datamart_job/main.py
@@ -617,7 +617,7 @@ Google スプレッドシートから直接BigQueryにデータを連携する�
 
 | 項目 | Drive連携（既存） | スプレッドシート連携（新規） |
 |------|------------------|---------------------------|
-| **Cloud Runサービス** | `drive-to-gcs` | `spreadsheet-to-bq` |
+| **Cloud Runサービス** | `drive-to-gcs` | `spreadsheet-to-gcs` |
 | **ソースコード** | `run_service/main.py` | `spreadsheet_service/main.py` |
 | **データソース** | Drive Folder ID | Sheets API（sheet_id指定） |
 | **GCSパス** | `/raw/{yyyymm}/`, `/proceed/{yyyymm}/` | `/spreadsheet/raw/` |
@@ -664,10 +664,10 @@ Cloud Schedulerにより毎月自動実行されます。
 
 ```bash
 # GCPコンソールから
-# Cloud Run > spreadsheet-to-bq > 「実行」ボタン
+# Cloud Run > spreadsheet-to-gcs > 「実行」ボタン
 
 # またはcurlで
-curl -X POST "https://spreadsheet-to-bq-xxx.asia-northeast1.run.app/sync" \
+curl -X POST "https://spreadsheet-to-gcs-xxx.asia-northeast1.run.app/sync" \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -675,7 +675,7 @@ curl -X POST "https://spreadsheet-to-bq-xxx.asia-northeast1.run.app/sync" \
 
 スプレッドシート連携は以下の点でDrive連携と完全に分離されており、相互に影響しません：
 
-1. **サービス分離**: 別のCloud Run Service（`spreadsheet-to-bq`）
+1. **サービス分離**: 別のCloud Run Service（`spreadsheet-to-gcs`）
 2. **コード分離**: 別ディレクトリ（`spreadsheet_service/`）
 3. **GCSパス分離**: `/spreadsheet/` プレフィックスで完全分離
 4. **テーブル分離**: `ss_` プレフィックスで既存テーブルと区別

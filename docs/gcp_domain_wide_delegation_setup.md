@@ -9,7 +9,7 @@
 | サービス名 | Cloud Run名 | 用途 |
 |-----------|-------------|------|
 | run_service | drive-to-gcs | DriveからGCSへファイル転送 |
-| spreadsheet_service | spreadsheet-to-bq | スプレッドシートからBigQueryへ連携 |
+| spreadsheet_service | spreadsheet-to-gcs | スプレッドシートからBigQueryへ連携 |
 
 ## サービスアカウント情報
 
@@ -61,20 +61,20 @@ gcloud run deploy drive-to-gcs \
   --update-env-vars="SERVICE_JSON_PATH=/secrets/sa-key.json"
 ```
 
-#### spreadsheet-to-bq のデプロイ
+#### spreadsheet-to-gcs のデプロイ
 
 ```bash
 # まずイメージをビルド
 cd spreadsheet_service
 gcloud builds submit \
-  --tag asia-northeast1-docker.pkg.dev/data-platform-prod-475201/cloud-run-source-deploy/spreadsheet-to-bq \
+  --tag asia-northeast1-docker.pkg.dev/data-platform-prod-475201/cloud-run-source-deploy/spreadsheet-to-gcs \
   --project=data-platform-prod-475201
 
 # デプロイ
-gcloud run deploy spreadsheet-to-bq \
+gcloud run deploy spreadsheet-to-gcs \
   --project=data-platform-prod-475201 \
   --region=asia-northeast1 \
-  --image=asia-northeast1-docker.pkg.dev/data-platform-prod-475201/cloud-run-source-deploy/spreadsheet-to-bq \
+  --image=asia-northeast1-docker.pkg.dev/data-platform-prod-475201/cloud-run-source-deploy/spreadsheet-to-gcs \
   --set-env-vars="GCP_PROJECT=data-platform-prod-475201,LANDING_BUCKET=data-platform-landing-prod,MANUAL_INPUT_FOLDER_ID=1O4eUpl6AWgag1oMTyrtoA7sXEHX3mfxc,IMPERSONATE_USER=fiby2@tanacho.com" \
   --set-secrets="/secrets/sa-key.json=sa-data-platform-key:latest" \
   --update-env-vars="SERVICE_JSON_PATH=/secrets/sa-key.json"

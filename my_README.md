@@ -17,7 +17,7 @@ Cloud Workflows
     │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート (to workflows)
     │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート (to workflows)
     ├── Step 2: 待機 (2分)
-    ├── Step 3: spreadsheet-to-bq
+    ├── Step 3: spreadsheet-to-gcs
     │    - 3-1: 整合性確認
     │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート (to workflows + to logging)
     │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート (to workflows)
@@ -55,7 +55,7 @@ Cloud Workflows
 ```
 (resource.type="workflows.googleapis.com/Workflow" AND resource.labels.workflow_id="data-pipeline")
   OR
-  (resource.type="cloud_run_revision" AND resource.labels.service_name=("drive-to-gcs" OR "spreadsheet-to-bq" OR "gcs-to-bq"))
+  (resource.type="cloud_run_revision" AND resource.labels.service_name=("drive-to-gcs" OR "spreadsheet-to-gcs" OR "gcs-to-bq"))
   OR
   (resource.type="cloud_run_job" AND resource.labels.job_name="dwh-datamart-update")
   timestamp>="2025-12-25T17:48:00Z"

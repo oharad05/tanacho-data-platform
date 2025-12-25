@@ -6,7 +6,7 @@
 # フロー:
 #   Step 1: drive-to-gcs (Google Drive → GCS)
 #   Step 2: 待機 (2分)
-#   Step 3: spreadsheet-to-bq (スプレッドシート → GCS)
+#   Step 3: spreadsheet-to-gcs (スプレッドシート → GCS)
 #   Step 4: 待機 (2分)
 #   Step 5: gcs-to-bq (GCS → BigQuery)
 #   Step 6: 待機 (3分)
@@ -34,7 +34,7 @@ main:
           - mode: ${default(map.get(args, "mode"), "replace")}
           - target_month: ${default(map.get(args, "target_month"), "")}
           - drive_to_gcs_url: "https://drive-to-gcs-102847004309.asia-northeast1.run.app"
-          - spreadsheet_to_bq_url: "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app"
+          - spreadsheet_to_gcs_url: "https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app"
           - gcs_to_bq_url: "https://gcs-to-bq-102847004309.asia-northeast1.run.app"
           - dwh_job_name: "dwh-datamart-update"
           - workflow_start_time: ${sys.now()}
@@ -114,13 +114,13 @@ main:
           seconds: 120
 
     # ============================================================
-    # Step 3: spreadsheet-to-bq (スプレッドシート → GCS)
+    # Step 3: spreadsheet-to-gcs (スプレッドシート → GCS)
     # ============================================================
-    - step3_spreadsheet_to_bq:
+    - step3_spreadsheet_to_gcs:
         try:
           call: http.post
           args:
-            url: ${spreadsheet_to_bq_url + "/sync"}
+            url: ${spreadsheet_to_gcs_url + "/sync"}
             timeout: 900  # 15分
             auth:
               type: OIDC
@@ -133,7 +133,7 @@ main:
                 args:
                   severity: "ERROR"
                   json:
-                    step: "spreadsheet-to-bq"
+                    step: "spreadsheet-to-gcs"
                     error: ${e}
             - raise_spreadsheet_error:
                 raise: ${e}
@@ -147,19 +147,19 @@ main:
                   args:
                     severity: "ERROR"
                     json:
-                      step: "spreadsheet-to-bq"
+                      step: "spreadsheet-to-gcs"
                       status_code: ${spreadsheet_result.code}
               - raise_spreadsheet_failure:
                   raise:
                     code: ${spreadsheet_result.code}
-                    message: "spreadsheet-to-bq failed"
+                    message: "spreadsheet-to-gcs failed"
 
     - log_spreadsheet_success:
         call: sys.log
         args:
           severity: "INFO"
           json:
-            step: "spreadsheet-to-bq"
+            step: "spreadsheet-to-gcs"
             status: "completed"
             success_count: ${len(spreadsheet_result.body.success)}
             failed_count: ${len(spreadsheet_result.body.failed)}
@@ -315,7 +315,7 @@ main:
             total_duration_seconds: ${total_duration}
             steps_completed:
               - "drive-to-gcs"
-              - "spreadsheet-to-bq"
+              - "spreadsheet-to-gcs"
               - "gcs-to-bq"
               - "dwh-datamart-update"
 
@@ -330,7 +330,7 @@ main:
             drive_to_gcs:
               processed: ${drive_result.body.total_processed}
               failed: ${len(drive_result.body.total_failed)}
-            spreadsheet_to_bq:
+            spreadsheet_to_gcs:
               success: ${len(spreadsheet_result.body.success)}
               failed: ${len(spreadsheet_result.body.failed)}
             gcs_to_bq:

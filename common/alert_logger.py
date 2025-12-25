@@ -44,7 +44,7 @@ class AlertType(Enum):
     EMPTY_DATA = "EMPTY_DATA"              # 取り込み件数0件
     LOAD_ERROR = "LOAD_ERROR"              # 取り込みエラー
 
-    # drive-to-gcs / spreadsheet-to-bq
+    # drive-to-gcs / spreadsheet-to-gcs
     FILE_ERROR = "FILE_ERROR"              # ファイル処理エラー
     SHEET_ERROR = "SHEET_ERROR"            # シート処理エラー
 
@@ -74,7 +74,7 @@ def log_alert(
 
     Args:
         alert_type: アラートタイプ
-        service: サービス名（drive-to-gcs, spreadsheet-to-bq, gcs-to-bq, dwh-datamart-update）
+        service: サービス名（drive-to-gcs, spreadsheet-to-gcs, gcs-to-bq, dwh-datamart-update）
         target: 対象（ファイル名、シート名、テーブル名など）
         message: エラーメッセージ
         details: 追加の詳細情報
