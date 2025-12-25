@@ -22,23 +22,88 @@ import json
 import logging
 import yaml
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from google.cloud import bigquery
 from google.cloud import storage
 
 # ============================================================
-# バリデーション設定
+# 統一ログ設定
 # ============================================================
 
 VALIDATION_ENABLED = os.environ.get("VALIDATION_ENABLED", "true").lower() == "true"
 
-# バリデーションログ用のlogger
-validation_logger = logging.getLogger("datamart-validation")
-if not validation_logger.handlers:
+# パイプライン識別用の設定
+PIPELINE_ID = "data-pipeline"
+# execution_idは環境変数から取得、なければタイムスタンプで生成
+EXECUTION_ID = os.environ.get("EXECUTION_ID", datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+STEP_NAME = "dwh-datamart-update"
+
+# 統一ログ用のlogger
+pipeline_logger = logging.getLogger("pipeline-logger")
+if not pipeline_logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(message)s'))
-    validation_logger.addHandler(handler)
-    validation_logger.setLevel(logging.INFO)
+    pipeline_logger.addHandler(handler)
+    pipeline_logger.setLevel(logging.INFO)
+
+
+def log_pipeline_event(
+    action: str,
+    status: str = "INFO",
+    message: str = "",
+    table_name: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    統一形式でパイプラインログを出力
+
+    Args:
+        action: 実行中のアクション（例: "dwh_update", "datamart_update", "validation"）
+        status: ステータス（"INFO", "OK", "ERROR", "WARNING"）
+        message: ログメッセージ
+        table_name: 対象テーブル名（オプション）
+        details: 詳細情報（オプション）
+    """
+    severity = "ERROR" if status == "ERROR" else "WARNING" if status == "WARNING" else "INFO"
+
+    log_entry = {
+        "severity": severity,
+        "message": message,
+        "labels": {
+            "pipeline_id": PIPELINE_ID,
+            "execution_id": EXECUTION_ID,
+            "step": STEP_NAME,
+            "action": action,
+            "status": status
+        },
+        "jsonPayload": {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "pipeline_id": PIPELINE_ID,
+            "execution_id": EXECUTION_ID,
+            "step": STEP_NAME,
+            "action": action,
+            "status": status,
+            "message": message
+        }
+    }
+
+    if table_name:
+        log_entry["labels"]["table_name"] = table_name
+        log_entry["jsonPayload"]["table_name"] = table_name
+
+    if details:
+        log_entry["jsonPayload"]["details"] = details
+
+    if severity == "ERROR":
+        pipeline_logger.error(json.dumps(log_entry, ensure_ascii=False))
+    elif severity == "WARNING":
+        pipeline_logger.warning(json.dumps(log_entry, ensure_ascii=False))
+    else:
+        pipeline_logger.info(json.dumps(log_entry, ensure_ascii=False))
+
+
+# 後方互換性のためのエイリアス
+validation_logger = pipeline_logger
 
 PROJECT_ID = "data-platform-prod-475201"
 GCS_BUCKET = "data-platform-landing-prod"
@@ -145,9 +210,73 @@ def execute_sql(bq_client: bigquery.Client, sql: str, description: str) -> bool:
         return False
 
 
+# テーブルのパーティション・クラスタリング設定
+TABLE_PARTITION_CONFIG = {
+    "sales_target_and_achievements": {
+        "partition_field": "sales_accounting_period",
+        "clustering_fields": ["branch_code"]
+    },
+    "billing_balance": {
+        "partition_field": "sales_month",
+        "clustering_fields": ["branch_code"]
+    },
+    "ledger_income": {
+        "partition_field": "slip_date",
+        "clustering_fields": ["classification_type"]
+    },
+    "ledger_loss": {
+        "partition_field": "accounting_month",
+        "clustering_fields": ["classification_type"]
+    },
+    "department_summary": {
+        "partition_field": "sales_accounting_period",
+        "clustering_fields": ["code"]
+    },
+    "internal_interest": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "profit_plan_term": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
+    "profit_plan_term_nagasaki": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
+    "profit_plan_term_fukuoka": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
+    "stocks": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "ms_allocation_ratio": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "customer_sales_target_and_achievements": {
+        "partition_field": "sales_accounting_period",
+        "clustering_fields": ["branch_code"]
+    },
+    "construction_progress_days_amount": {
+        "partition_field": "property_period",
+        "clustering_fields": ["branch_code"]
+    },
+    "construction_progress_days_final_date": {
+        "partition_field": "final_billing_sales_date",
+        "clustering_fields": []
+    },
+}
+
+
 def backup_corporate_data(bq_client: bigquery.Client) -> Dict[str, int]:
     """
     corporate_dataのテーブルをcorporate_data_bkにコピーし、件数を返す
+
+    パーティション設定があるテーブルは、DROP → CREATE TABLE ... PARTITION BY で
+    パーティション設定を保持してコピーする。
 
     Returns:
         テーブル名をキー、件数を値とする辞書
@@ -163,12 +292,37 @@ def backup_corporate_data(bq_client: bigquery.Client) -> Dict[str, int]:
         backup_table = f"{PROJECT_ID}.{BACKUP_DATASET}.{table_name}"
 
         try:
-            # テーブルをコピー（上書き）
-            copy_sql = f"""
-            CREATE OR REPLACE TABLE `{backup_table}` AS
-            SELECT * FROM `{source_table}`
-            """
-            bq_client.query(copy_sql).result()
+            # パーティション設定を確認
+            partition_config = TABLE_PARTITION_CONFIG.get(table_name)
+
+            if partition_config:
+                # パーティション設定があるテーブル: DROP → CREATE TABLE ... PARTITION BY
+                partition_field = partition_config["partition_field"]
+                clustering_fields = partition_config.get("clustering_fields", [])
+
+                # 1. バックアップテーブルを削除
+                drop_sql = f"DROP TABLE IF EXISTS `{backup_table}`"
+                bq_client.query(drop_sql).result()
+
+                # 2. パーティション・クラスタリング付きでテーブルを作成
+                clustering_clause = ""
+                if clustering_fields:
+                    clustering_clause = f"CLUSTER BY {', '.join(clustering_fields)}"
+
+                copy_sql = f"""
+                CREATE TABLE `{backup_table}`
+                PARTITION BY {partition_field}
+                {clustering_clause}
+                AS SELECT * FROM `{source_table}`
+                """
+                bq_client.query(copy_sql).result()
+            else:
+                # パーティション設定がないテーブル: 従来の方法
+                copy_sql = f"""
+                CREATE OR REPLACE TABLE `{backup_table}` AS
+                SELECT * FROM `{source_table}`
+                """
+                bq_client.query(copy_sql).result()
 
             # 件数を取得
             count_sql = f"SELECT COUNT(*) as cnt FROM `{source_table}`"
@@ -377,22 +531,65 @@ def update_dwh(bq_client: bigquery.Client) -> bool:
     print("DWH更新処理を開始します")
     print("=" * 50)
 
+    log_pipeline_event(
+        action="dwh_update",
+        status="INFO",
+        message="DWH更新処理を開始します",
+        details={"total_files": len(DWH_SQL_FILES)}
+    )
+
     success_count = 0
+    failed_files = []
     total = len(DWH_SQL_FILES)
 
     for i, sql_file in enumerate(DWH_SQL_FILES, 1):
         print(f"\n[{i}/{total}] {sql_file}")
         blob_path = f"{SQL_PREFIX}/{sql_file}"
+        table_name = sql_file.replace(".sql", "")
 
         try:
             sql = get_sql_from_gcs(GCS_BUCKET, blob_path)
             if execute_sql(bq_client, sql, sql_file):
                 success_count += 1
+                log_pipeline_event(
+                    action="dwh_update",
+                    status="OK",
+                    message=f"✓ 完了: {sql_file}",
+                    table_name=table_name
+                )
+            else:
+                failed_files.append(sql_file)
+                log_pipeline_event(
+                    action="dwh_update",
+                    status="ERROR",
+                    message=f"✗ SQL実行エラー: {sql_file}",
+                    table_name=table_name
+                )
         except Exception as e:
             print(f"  ✗ SQLファイル読み込みエラー: {blob_path}")
             print(f"    {str(e)}")
+            failed_files.append(sql_file)
+            log_pipeline_event(
+                action="dwh_update",
+                status="ERROR",
+                message=f"✗ SQLファイル読み込みエラー: {sql_file}",
+                table_name=table_name,
+                details={"error": str(e)}
+            )
 
     print(f"\nDWH更新完了: {success_count}/{total} 成功")
+
+    log_pipeline_event(
+        action="dwh_update",
+        status="OK" if success_count == total else "ERROR",
+        message=f"DWH更新完了: {success_count}/{total} 成功",
+        details={
+            "success_count": success_count,
+            "total": total,
+            "failed_files": failed_files
+        }
+    )
+
     return success_count == total
 
 
@@ -402,22 +599,65 @@ def update_datamart(bq_client: bigquery.Client) -> bool:
     print("DataMart更新処理を開始します")
     print("=" * 50)
 
+    log_pipeline_event(
+        action="datamart_update",
+        status="INFO",
+        message="DataMart更新処理を開始します",
+        details={"total_files": len(DATAMART_SQL_FILES)}
+    )
+
     success_count = 0
+    failed_files = []
     total = len(DATAMART_SQL_FILES)
 
     for i, sql_file in enumerate(DATAMART_SQL_FILES, 1):
         print(f"\n[{i}/{total}] {sql_file}")
         blob_path = f"{SQL_PREFIX}/{sql_file}"
+        table_name = sql_file.replace(".sql", "")
 
         try:
             sql = get_sql_from_gcs(GCS_BUCKET, blob_path)
             if execute_sql(bq_client, sql, sql_file):
                 success_count += 1
+                log_pipeline_event(
+                    action="datamart_update",
+                    status="OK",
+                    message=f"✓ 完了: {sql_file}",
+                    table_name=table_name
+                )
+            else:
+                failed_files.append(sql_file)
+                log_pipeline_event(
+                    action="datamart_update",
+                    status="ERROR",
+                    message=f"✗ SQL実行エラー: {sql_file}",
+                    table_name=table_name
+                )
         except Exception as e:
             print(f"  ✗ SQLファイル読み込みエラー: {blob_path}")
             print(f"    {str(e)}")
+            failed_files.append(sql_file)
+            log_pipeline_event(
+                action="datamart_update",
+                status="ERROR",
+                message=f"✗ SQLファイル読み込みエラー: {sql_file}",
+                table_name=table_name,
+                details={"error": str(e)}
+            )
 
     print(f"\nDataMart更新完了: {success_count}/{total} 成功")
+
+    log_pipeline_event(
+        action="datamart_update",
+        status="OK" if success_count == total else "ERROR",
+        message=f"DataMart更新完了: {success_count}/{total} 成功",
+        details={
+            "success_count": success_count,
+            "total": total,
+            "failed_files": failed_files
+        }
+    )
+
     return success_count == total
 
 
@@ -564,13 +804,28 @@ def run_datamart_validation(bq_client: bigquery.Client) -> bool:
 
 def main():
     """メイン処理"""
+    start_time = datetime.utcnow()
     update_type = os.environ.get("UPDATE_TYPE", "all").lower()
     enable_backup = os.environ.get("ENABLE_BACKUP", "true").lower() == "true"
+
     print(f"更新タイプ: {update_type}")
     print(f"プロジェクト: {PROJECT_ID}")
     print(f"SQLソース: gs://{GCS_BUCKET}/{SQL_PREFIX}/")
     print(f"バリデーション: {'有効' if VALIDATION_ENABLED else '無効'}")
     print(f"バックアップ: {'有効' if enable_backup else '無効'}")
+    print(f"実行ID: {EXECUTION_ID}")
+
+    # パイプライン開始ログ
+    log_pipeline_event(
+        action="pipeline_start",
+        status="INFO",
+        message="DWH/DataMart更新ジョブを開始します",
+        details={
+            "update_type": update_type,
+            "validation_enabled": VALIDATION_ENABLED,
+            "backup_enabled": enable_backup
+        }
+    )
 
     bq_client = bigquery.Client(project=PROJECT_ID)
 
@@ -605,20 +860,62 @@ def main():
         if duplicate_result.get("status") == "ERROR":
             print("\n⚠️  重複が検出されました（警告のみ）")
 
+    # 実行時間を計算
+    end_time = datetime.utcnow()
+    duration_seconds = (end_time - start_time).total_seconds()
+
     print("\n" + "=" * 50)
     if dwh_success and datamart_success:
         if not validation_success:
             print("更新処理は完了しましたが、バリデーションで警告があります")
             print("=" * 50)
-            # バリデーション警告は終了コードに影響させない（警告のみ）
+
+            # パイプライン完了ログ（警告あり）
+            log_pipeline_event(
+                action="pipeline_complete",
+                status="WARNING",
+                message="更新処理は完了しましたが、バリデーションで警告があります",
+                details={
+                    "dwh_success": dwh_success,
+                    "datamart_success": datamart_success,
+                    "validation_success": validation_success,
+                    "duration_seconds": duration_seconds
+                }
+            )
             sys.exit(0)
         else:
             print("全ての更新処理が正常に完了しました")
             print("=" * 50)
+
+            # パイプライン完了ログ（成功）
+            log_pipeline_event(
+                action="pipeline_complete",
+                status="OK",
+                message="全ての更新処理が正常に完了しました",
+                details={
+                    "dwh_success": dwh_success,
+                    "datamart_success": datamart_success,
+                    "validation_success": validation_success,
+                    "duration_seconds": duration_seconds
+                }
+            )
             sys.exit(0)
     else:
         print("一部の更新処理でエラーが発生しました")
         print("=" * 50)
+
+        # パイプライン完了ログ（エラー）
+        log_pipeline_event(
+            action="pipeline_complete",
+            status="ERROR",
+            message="一部の更新処理でエラーが発生しました",
+            details={
+                "dwh_success": dwh_success,
+                "datamart_success": datamart_success,
+                "validation_success": validation_success,
+                "duration_seconds": duration_seconds
+            }
+        )
         sys.exit(1)
 
 

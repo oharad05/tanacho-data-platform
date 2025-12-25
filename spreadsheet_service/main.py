@@ -398,6 +398,8 @@ def transform_data(raw_data: List[List], columns_mapping: pd.DataFrame) -> pd.Da
                     df[col] = pd.to_datetime(df[col].str.strip(), format='%Y/%m', errors='coerce')
                     df[col] = df[col].dt.strftime('%Y-%m-%d')
                 elif dtype == 'INTEGER':
+                    # カンマ区切りの数値を処理（例: '1,841,011' → 1841011）
+                    df[col] = df[col].astype(str).str.replace(',', '', regex=False)
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 elif dtype == 'FLOAT':
                     df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -587,9 +589,9 @@ def sync():
 
 @app.route('/', methods=['GET', 'POST'])
 def root():
-    """ルートエンドポイント（Pub/Sub対応）"""
+    """ルートエンドポイント"""
     if request.method == 'POST':
-        # Pub/Subからのトリガーの場合はsyncを実行
+        # POSTリクエストの場合はsyncを実行
         return sync()
     return jsonify({
         "service": "spreadsheet-to-gcs",

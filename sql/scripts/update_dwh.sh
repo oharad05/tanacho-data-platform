@@ -25,89 +25,95 @@ echo "========================================="
 #     --destination_tableオプションは使用せず、直接実行します。
 
 echo ""
-echo "[1/14] 売上実績を更新中..."
+echo "[1/15] 売上実績を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_sales_actual.sql"
 
-echo "[2/14] 売上実績（前年）を更新中..."
+echo "[2/15] 売上実績（前年）を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_sales_actual_prev_year.sql"
 
-echo "[3/14] 売上目標を更新中..."
+echo "[3/15] 売上目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_sales_target.sql"
 
-echo "[4/14] 営業経費を更新中..."
+echo "[4/15] 営業経費を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/operating_expenses.sql"
 
-echo "[5/14] 営業外収入を更新中..."
+echo "[5/15] 営業外収入を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/non_operating_income.sql"
 
-echo "[6/14] 営業外費用を更新中..."
+echo "[6/15] 営業外費用を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/non_operating_expenses.sql"
 
-echo "[7/14] 営業外費用（長崎支店）を更新中..."
+echo "[7/15] 営業外費用（長崎支店）を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/non_operating_expenses_nagasaki.sql"
 
-echo "[8/14] 営業外費用（福岡支店）を更新中..."
+echo "[8/15] 営業外費用（福岡支店）を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/non_operating_expenses_fukuoka.sql"
 
-echo "[9/14] 雑損失を更新中..."
+echo "[9/15] 雑損失を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/miscellaneous_loss.sql"
 
-echo "[10/14] 本店管理費を更新中..."
+echo "[10/15] 本店管理費を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/head_office_expenses.sql"
 
-echo "[11/14] 経常利益目標を更新中..."
+echo "[11/15] 経常利益目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_recurring_profit_target.sql"
 
-echo "[12/14] 営業経費目標を更新中..."
+echo "[12/15] 営業経費目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/operating_expenses_target.sql"
 
-echo "[13/14] 営業利益目標を更新中..."
+echo "[13/15] 営業利益目標を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/operating_income_target.sql"
 
-echo "[14/14] 損益計算書（全支店統合）を更新中..."
+echo "[14/15] 損益計算書（全支店統合）を更新中..."
 bq query \
   --project_id="${PROJECT_ID}" \
   --use_legacy_sql=false \
   < "${SQL_DIR}/dwh_profit_plan_term_all.sql"
+
+echo "[15/15] 在庫損益・前受け金（全支店統合）を更新中..."
+bq query \
+  --project_id="${PROJECT_ID}" \
+  --use_legacy_sql=false \
+  < "${SQL_DIR}/ss_inventory_advance.sql"
 
 echo ""
 echo "========================================="

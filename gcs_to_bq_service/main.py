@@ -14,7 +14,6 @@ GCS上のExcelファイルをCSVに変換し、BigQueryにロード
 import os
 import io
 import json
-import base64
 import traceback
 import logging
 import pandas as pd
@@ -37,16 +36,98 @@ from google.cloud import bigquery
 from google.cloud.exceptions import GoogleCloudError
 
 # ============================================================
-# バリデーション設定
+# 統一ログ設定
 # ============================================================
 
 # バリデーション有効化フラグ
 VALIDATION_ENABLED = os.environ.get("VALIDATION_ENABLED", "true").lower() == "true"
 
+# パイプライン識別用の設定
+PIPELINE_ID = "data-pipeline"
+STEP_NAME = "gcs-to-bq"
+
+# 統一ログ用のlogger
+pipeline_logger = logging.getLogger("pipeline-logger")
+if not pipeline_logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    pipeline_logger.addHandler(handler)
+    pipeline_logger.setLevel(logging.INFO)
+
+
+def get_execution_id() -> str:
+    """
+    実行IDを取得
+    環境変数から取得、なければリクエストごとにタイムスタンプで生成
+    """
+    return os.environ.get("EXECUTION_ID", datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+
+
+def log_pipeline_event(
+    action: str,
+    status: str = "INFO",
+    message: str = "",
+    table_name: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+    execution_id: Optional[str] = None
+) -> None:
+    """
+    統一形式でパイプラインログを出力
+
+    Args:
+        action: 実行中のアクション（例: "load", "transform", "validation"）
+        status: ステータス（"INFO", "OK", "ERROR", "WARNING"）
+        message: ログメッセージ
+        table_name: 対象テーブル名（オプション）
+        details: 詳細情報（オプション）
+        execution_id: 実行ID（オプション、指定なければ自動生成）
+    """
+    severity = "ERROR" if status == "ERROR" else "WARNING" if status == "WARNING" else "INFO"
+    exec_id = execution_id or get_execution_id()
+
+    log_entry = {
+        "severity": severity,
+        "message": message,
+        "labels": {
+            "pipeline_id": PIPELINE_ID,
+            "execution_id": exec_id,
+            "step": STEP_NAME,
+            "action": action,
+            "status": status
+        },
+        "jsonPayload": {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "pipeline_id": PIPELINE_ID,
+            "execution_id": exec_id,
+            "step": STEP_NAME,
+            "action": action,
+            "status": status,
+            "message": message
+        }
+    }
+
+    if table_name:
+        log_entry["labels"]["table_name"] = table_name
+        log_entry["jsonPayload"]["table_name"] = table_name
+
+    if details:
+        log_entry["jsonPayload"]["details"] = details
+
+    if severity == "ERROR":
+        pipeline_logger.error(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
+    elif severity == "WARNING":
+        pipeline_logger.warning(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
+    else:
+        pipeline_logger.info(json.dumps(log_entry, ensure_ascii=False, cls=DateTimeEncoder))
+
+
+# 後方互換性のためのエイリアス
+validation_logger = pipeline_logger
+
 # テーブルごとのユニークキー定義（重複チェック用）
 UNIQUE_KEYS_CONFIG = {
     "sales_target_and_achievements": ["sales_accounting_period", "branch_code", "department_code", "staff_code"],
-    "billing_balance": ["sales_month", "branch_code", "branch_name"],
+    "billing_balance": ["sales_month", "branch_code", "branch_name", "source_folder"],
     "ledger_income": ["slip_date", "slip_number", "line_number"],
     "ledger_loss": ["accounting_month", "slip_number", "line_number"],
     "department_summary": ["sales_accounting_period", "code"],
@@ -60,14 +141,6 @@ UNIQUE_KEYS_CONFIG = {
     "construction_progress_days_amount": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
     "construction_progress_days_final_date": ["final_billing_sales_date", "property_number", "property_data_classification"],
 }
-
-# バリデーションログ用のlogger
-validation_logger = logging.getLogger("gcs-to-bq-validation")
-if not validation_logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(message)s'))
-    validation_logger.addHandler(handler)
-    validation_logger.setLevel(logging.INFO)
 
 # 環境変数
 PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
@@ -120,6 +193,78 @@ TABLE_CONFIG = {
         "partition_field": "final_billing_sales_date",
         "clustering_fields": ["property_number"]
     }
+}
+
+# ============================================================
+# 累積型テーブルの定義
+# ============================================================
+# 各CSVが全期間のデータを含むテーブル
+# キー毎に最新フォルダ（max(source_folder)）のデータを優先してロード
+CUMULATIVE_TABLE_CONFIG = {
+    "profit_plan_term": {
+        # ソース: 12_損益5期目標.xlsx（東京支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "profit_plan_term_nagasaki": {
+        # ソース: 12_損益5期目標.xlsx（長崎支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "profit_plan_term_fukuoka": {
+        # ソース: 12_損益5期目標.xlsx（福岡支店目標103期シート）
+        "unique_keys": ["period", "item"],
+    },
+    "ms_allocation_ratio": {
+        # ソース: 10_案分比率マスタ.xlsx
+        "unique_keys": ["year_month", "branch", "department", "category"],
+    },
+    "construction_progress_days_amount": {
+        # ソース: 工事進捗日数金額.xlsx
+        "unique_keys": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
+    },
+    "stocks": {
+        # ソース: 9_在庫.xlsx
+        "unique_keys": ["year_month", "branch", "department", "category"],
+    },
+    "construction_progress_days_final_date": {
+        # ソース: 工事進捗日数最終日.xlsx
+        "unique_keys": ["final_billing_sales_date", "property_number", "property_data_classification"],
+    },
+}
+
+# ============================================================
+# スプレッドシート連携テーブルの定義
+# ============================================================
+# スプレッドシートから連携されるテーブル
+# パス: gs://data-platform-landing-prod/spreadsheet/proceed/
+SPREADSHEET_PROCEED_PATH = "spreadsheet/proceed"
+SPREADSHEET_COLUMNS_PATH = "spreadsheet/config/columns"
+SPREADSHEET_TABLE_PREFIX = "ss_"
+
+SPREADSHEET_TABLE_CONFIG = {
+    "gs_sales_profit": {
+        "description": "GS売上利益",
+        "bq_table_name": "ss_gs_sales_profit",
+    },
+    "inventory_advance_tokyo": {
+        "description": "東京在庫前払",
+        "bq_table_name": "ss_inventory_advance_tokyo",
+    },
+    "inventory_advance_nagasaki": {
+        "description": "長崎在庫前払",
+        "bq_table_name": "ss_inventory_advance_nagasaki",
+    },
+    "inventory_advance_fukuoka": {
+        "description": "福岡在庫前払",
+        "bq_table_name": "ss_inventory_advance_fukuoka",
+    },
+}
+
+# スプレッドシートテーブルのユニークキー定義（バリデーション用）
+SPREADSHEET_UNIQUE_KEYS_CONFIG = {
+    "ss_gs_sales_profit": [],  # ユニークキー未定義
+    "ss_inventory_advance_tokyo": ["posting_month", "branch_name", "sales_office", "category"],
+    "ss_inventory_advance_nagasaki": ["posting_month", "branch_name", "sales_office", "category"],
+    "ss_inventory_advance_fukuoka": ["posting_month", "branch_name", "sales_office", "category"],
 }
 
 # ============================================================
@@ -727,6 +872,10 @@ def transform_excel_to_csv(
         # ゼロ日付をnullに変換（金額変換後に実行）
         df = apply_zero_date_to_null_conversion(df, table_name, storage_client)
 
+        # source_folderカラムを追加（どのフォルダから取得したかを識別）
+        df["source_folder"] = int(yyyymm)
+        print(f"   ➕ source_folder={yyyymm} を追加")
+
         # CSV出力
         csv_buffer = io.BytesIO()
         df.to_csv(csv_buffer, index=False, encoding='utf-8')
@@ -894,11 +1043,13 @@ def delete_partition_data(
 def load_csv_to_bigquery(
     bq_client: bigquery.Client,
     table_name: str,
-    yyyymm: str
+    yyyymm: str,
+    execution_id: str = None
 ) -> bool:
     """CSVファイルをBigQueryにロード"""
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/proceed/{yyyymm}/{table_name}.csv"
+    exec_id = execution_id or get_execution_id()
 
     try:
         job_config = bigquery.LoadJobConfig(
@@ -929,6 +1080,21 @@ def load_csv_to_bigquery(
         print(f"   ✅ ロード完了: {load_job.output_rows} 行を追加")
         print(f"      総レコード数: {destination_table.num_rows:,} 行")
 
+        # 統一ログ出力
+        log_pipeline_event(
+            action="load_table",
+            status="OK",
+            message=f"テーブル {table_name} のロード完了",
+            table_name=table_name,
+            details={
+                "yyyymm": yyyymm,
+                "rows_added": load_job.output_rows,
+                "total_rows": destination_table.num_rows,
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
+
         return True
 
     except GoogleCloudError as e:
@@ -936,10 +1102,631 @@ def load_csv_to_bigquery(
         if hasattr(e, 'errors') and e.errors:
             for error in e.errors:
                 print(f"      詳細: {error}")
+
+        # エラーログ出力
+        log_pipeline_event(
+            action="load_table",
+            status="ERROR",
+            message=f"テーブル {table_name} のロードに失敗",
+            table_name=table_name,
+            details={
+                "yyyymm": yyyymm,
+                "error": str(e),
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
         return False
     except Exception as e:
         print(f"   ❌ 予期しないエラー: {e}")
+
+        # エラーログ出力
+        log_pipeline_event(
+            action="load_table",
+            status="ERROR",
+            message=f"テーブル {table_name} のロードで予期しないエラー",
+            table_name=table_name,
+            details={
+                "yyyymm": yyyymm,
+                "error": str(e),
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
         return False
+
+
+def process_cumulative_table(
+    bq_client: bigquery.Client,
+    storage_client: storage.Client,
+    table_name: str,
+    target_months: list,
+    execution_id: str = None
+) -> bool:
+    """
+    累積型テーブルのロード処理
+
+    全月のCSVを読み込み、source_folderカラムを追加して結合。
+    キー毎にmax(source_folder)のデータを優先して重複を解消。
+
+    Args:
+        bq_client: BigQueryクライアント
+        storage_client: GCSクライアント
+        table_name: テーブル名
+        target_months: 対象年月リスト
+        execution_id: 実行ID（オプション）
+
+    Returns:
+        成功時True
+    """
+    exec_id = execution_id or get_execution_id()
+    print(f"\n📊 処理中（累積型）: {table_name}")
+
+    config = CUMULATIVE_TABLE_CONFIG[table_name]
+    unique_keys = config["unique_keys"]
+    bucket = storage_client.bucket(LANDING_BUCKET)
+
+    # 全月のCSVを読み込み、source_folderカラムを追加
+    all_dfs = []
+    for yyyymm in target_months:
+        blob = bucket.blob(f"google-drive/proceed/{yyyymm}/{table_name}.csv")
+        if blob.exists():
+            csv_content = blob.download_as_string().decode("utf-8")
+            df = pd.read_csv(io.StringIO(csv_content))
+            df["source_folder"] = int(yyyymm)
+            all_dfs.append(df)
+            print(f"   📁 {yyyymm}: {len(df)}行")
+
+    if not all_dfs:
+        print(f"   ⚠️  CSVファイルが見つかりません")
+        return False
+
+    # 全データを結合
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    print(f"   📊 結合後: {len(combined_df)}行")
+
+    # キー毎にmax(source_folder)でフィルタ（最新フォルダを優先）
+    idx = combined_df.groupby(unique_keys)["source_folder"].transform("max") == combined_df["source_folder"]
+    deduped_df = combined_df[idx].drop_duplicates(subset=unique_keys, keep="last").reset_index(drop=True)
+    print(f"   ✨ 重複除去後: {len(deduped_df)}行")
+
+    # 一時CSVに保存
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        temp_csv = f.name
+        deduped_df.to_csv(f, index=False)
+
+    # GCSにアップロード
+    temp_blob = bucket.blob(f"google-drive/temp/{table_name}_cumulative.csv")
+    temp_blob.upload_from_filename(temp_csv)
+    gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/temp/{table_name}_cumulative.csv"
+
+    # BigQueryにロード
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+
+    try:
+        # 累積型テーブルは全データを削除（CSVに全履歴が含まれるため）
+        delete_query = f"""
+        DELETE FROM `{table_id}`
+        WHERE TRUE
+        """
+        query_job = bq_client.query(delete_query)
+        query_job.result()
+        deleted = query_job.num_dml_affected_rows or 0
+        print(f"   🗑️  既存データ削除（全件）: {deleted}行")
+
+        # スキーマを取得してsource_folderカラムを追加（存在しない場合）
+        table = bq_client.get_table(table_id)
+        existing_schema = list(table.schema)
+        has_source_folder = any(f.name == "source_folder" for f in existing_schema)
+
+        if not has_source_folder:
+            new_schema = existing_schema + [bigquery.SchemaField("source_folder", "INTEGER")]
+            table.schema = new_schema
+            bq_client.update_table(table, ["schema"])
+            print(f"   ➕ source_folderカラムを追加")
+
+        # ロード
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            skip_leading_rows=1,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            allow_quoted_newlines=True,
+        )
+        load_job = bq_client.load_table_from_uri(gcs_uri, table_id, job_config=job_config)
+        load_job.result(timeout=300)
+        print(f"   ✅ ロード完了: {load_job.output_rows}行")
+
+        # 一時ファイル削除
+        temp_blob.delete()
+        import os
+        os.remove(temp_csv)
+
+        # テーブルとカラムの説明を更新
+        update_table_and_column_descriptions(bq_client, storage_client, table_name)
+
+        # 統一ログ出力
+        log_pipeline_event(
+            action="load_cumulative_table",
+            status="OK",
+            message=f"累積型テーブル {table_name} のロード完了",
+            table_name=table_name,
+            details={
+                "target_months": target_months,
+                "rows_loaded": load_job.output_rows,
+                "unique_keys": unique_keys
+            },
+            execution_id=exec_id
+        )
+
+        return True
+
+    except Exception as e:
+        print(f"   ❌ エラー: {e}")
+        traceback.print_exc()
+
+        # エラーログ出力
+        log_pipeline_event(
+            action="load_cumulative_table",
+            status="ERROR",
+            message=f"累積型テーブル {table_name} のロードに失敗",
+            table_name=table_name,
+            details={
+                "target_months": target_months,
+                "error": str(e)
+            },
+            execution_id=exec_id
+        )
+        return False
+
+
+# ============================================================
+# スプレッドシート → BigQuery ロード処理
+# ============================================================
+
+def load_spreadsheet_column_schema(
+    storage_client: storage.Client,
+    table_name: str
+) -> List[bigquery.SchemaField]:
+    """
+    スプレッドシートのカラム定義からBigQueryスキーマを生成
+
+    Args:
+        storage_client: GCSクライアント
+        table_name: テーブル名（ss_プレフィックスなし）
+
+    Returns:
+        BigQueryスキーマフィールドのリスト
+    """
+    try:
+        bucket = storage_client.bucket(LANDING_BUCKET)
+        blob = bucket.blob(f"{SPREADSHEET_COLUMNS_PATH}/{table_name}.csv")
+
+        if not blob.exists():
+            print(f"⚠️  スプレッドシートカラム定義が見つかりません: {table_name}.csv")
+            return []
+
+        csv_data = blob.download_as_bytes()
+        df = pd.read_csv(io.BytesIO(csv_data))
+
+        # data_type → BigQuery型のマッピング
+        type_mapping = {
+            "STRING": "STRING",
+            "INTEGER": "INTEGER",
+            "INT64": "INTEGER",
+            "FLOAT": "FLOAT",
+            "NUMERIC": "NUMERIC",
+            "DATE": "DATE",
+            "DATETIME": "DATETIME",
+            "TIMESTAMP": "TIMESTAMP",
+            "BOOLEAN": "BOOLEAN",
+            "BOOL": "BOOLEAN",
+        }
+
+        schema = []
+        for _, row in df.iterrows():
+            en_name = row['en_name']
+            data_type = row.get('data_type', 'STRING')
+            bq_type = type_mapping.get(data_type.upper(), 'STRING')
+            jp_name = row.get('jp_name', en_name)
+
+            schema.append(bigquery.SchemaField(
+                name=en_name,
+                field_type=bq_type,
+                mode="NULLABLE",
+                description=jp_name
+            ))
+
+        return schema
+
+    except Exception as e:
+        print(f"⚠️  スプレッドシートスキーマ読み込みエラー: {e}")
+        return []
+
+
+def load_spreadsheet_to_bigquery(
+    bq_client: bigquery.Client,
+    storage_client: storage.Client,
+    table_name: str,
+    execution_id: str = None
+) -> bool:
+    """
+    スプレッドシートCSVをBigQueryにロード（全データ洗い替え）
+
+    Args:
+        bq_client: BigQueryクライアント
+        storage_client: GCSクライアント
+        table_name: テーブル名（ss_プレフィックスなし）
+        execution_id: 実行ID
+
+    Returns:
+        成功時True
+    """
+    exec_id = execution_id or get_execution_id()
+    config = SPREADSHEET_TABLE_CONFIG.get(table_name)
+
+    if not config:
+        print(f"⚠️  未定義のスプレッドシートテーブル: {table_name}")
+        return False
+
+    bq_table_name = config["bq_table_name"]
+    description = config["description"]
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{bq_table_name}"
+    gcs_uri = f"gs://{LANDING_BUCKET}/{SPREADSHEET_PROCEED_PATH}/{table_name}.csv"
+
+    print(f"\n📊 スプレッドシート処理中: {table_name} → {bq_table_name}")
+
+    try:
+        # GCSファイルの存在確認
+        bucket = storage_client.bucket(LANDING_BUCKET)
+        blob = bucket.blob(f"{SPREADSHEET_PROCEED_PATH}/{table_name}.csv")
+
+        if not blob.exists():
+            print(f"   ⚠️  CSVファイルが見つかりません: {gcs_uri}")
+            log_pipeline_event(
+                action="load_spreadsheet",
+                status="WARNING",
+                message=f"スプレッドシートCSVが見つかりません",
+                table_name=bq_table_name,
+                details={"gcs_uri": gcs_uri},
+                execution_id=exec_id
+            )
+            return False
+
+        # CSVデータを読み込んでバリデーション
+        csv_content = blob.download_as_string().decode("utf-8")
+        df = pd.read_csv(io.StringIO(csv_content))
+        row_count = len(df)
+
+        print(f"   📁 データ: {row_count}行 × {len(df.columns)}列")
+
+        # カラム・レコード数バリデーション
+        if VALIDATION_ENABLED:
+            # スキーマからカラム名リストを取得
+            schema = load_spreadsheet_column_schema(storage_client, table_name)
+            expected_columns = [field.name for field in schema]
+
+            if expected_columns:
+                validation_result = {
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "service": "gcs-to-bq",
+                    "validation_type": "spreadsheet_column_check",
+                    "table_name": bq_table_name,
+                    "source_file": gcs_uri,
+                    "status": "OK",
+                    "row_count": row_count,
+                    "column_count": len(df.columns),
+                    "expected_column_count": len(expected_columns),
+                    "errors": [],
+                    "warnings": []
+                }
+
+                actual_columns = list(df.columns)
+                missing_columns = [col for col in expected_columns if col not in actual_columns]
+                extra_columns = [col for col in actual_columns if col not in expected_columns]
+
+                if missing_columns:
+                    validation_result["errors"].append({
+                        "type": "MISSING_COLUMNS",
+                        "message": f"期待されるカラムが存在しません: {missing_columns}",
+                        "details": {"missing": missing_columns}
+                    })
+                    validation_result["status"] = "ERROR"
+
+                if extra_columns:
+                    validation_result["warnings"].append({
+                        "type": "EXTRA_COLUMNS",
+                        "message": f"定義外のカラムが存在します: {extra_columns}",
+                        "details": {"extra": extra_columns}
+                    })
+
+                if row_count == 0:
+                    validation_result["errors"].append({
+                        "type": "EMPTY_DATA",
+                        "message": "データが0件です"
+                    })
+                    validation_result["status"] = "ERROR"
+
+                log_validation_result(validation_result)
+
+                if validation_result.get("status") == "ERROR":
+                    for error in validation_result.get("errors", []):
+                        print(f"   ⚠️  バリデーションエラー: {error.get('message')}")
+                else:
+                    print(f"   ✅ バリデーションOK: カラム・レコード数チェック passed")
+
+        # スキーマを取得
+        schema = load_spreadsheet_column_schema(storage_client, table_name)
+
+        # BigQueryジョブ設定
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            skip_leading_rows=1,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # 全データ洗い替え
+            allow_quoted_newlines=True,
+            allow_jagged_rows=False,
+            ignore_unknown_values=False,
+            max_bad_records=0,
+        )
+
+        # スキーマがある場合は設定
+        if schema:
+            job_config.schema = schema
+        else:
+            job_config.autodetect = True
+
+        # BigQueryにロード
+        load_job = bq_client.load_table_from_uri(
+            gcs_uri,
+            table_id,
+            job_config=job_config
+        )
+
+        print(f"   ⏳ ロード開始: {bq_table_name} (Job ID: {load_job.job_id})")
+
+        load_job.result(timeout=300)
+
+        destination_table = bq_client.get_table(table_id)
+        print(f"   ✅ ロード完了: {load_job.output_rows} 行")
+
+        # テーブルの説明を設定
+        destination_table.description = description
+        bq_client.update_table(destination_table, ["description"])
+        print(f"   📝 テーブル説明を設定: {description}")
+
+        # 統一ログ出力
+        log_pipeline_event(
+            action="load_spreadsheet",
+            status="OK",
+            message=f"スプレッドシートテーブル {bq_table_name} のロード完了",
+            table_name=bq_table_name,
+            details={
+                "source_table": table_name,
+                "rows_loaded": load_job.output_rows,
+                "total_rows": destination_table.num_rows,
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
+
+        return True
+
+    except GoogleCloudError as e:
+        print(f"   ❌ ロードエラー: {e}")
+        if hasattr(e, 'errors') and e.errors:
+            for error in e.errors:
+                print(f"      詳細: {error}")
+
+        log_pipeline_event(
+            action="load_spreadsheet",
+            status="ERROR",
+            message=f"スプレッドシートテーブル {bq_table_name} のロードに失敗",
+            table_name=bq_table_name,
+            details={
+                "source_table": table_name,
+                "error": str(e),
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
+        return False
+
+    except Exception as e:
+        print(f"   ❌ 予期しないエラー: {e}")
+        traceback.print_exc()
+
+        log_pipeline_event(
+            action="load_spreadsheet",
+            status="ERROR",
+            message=f"スプレッドシートテーブル {bq_table_name} のロードで予期しないエラー",
+            table_name=bq_table_name,
+            details={
+                "source_table": table_name,
+                "error": str(e),
+                "gcs_uri": gcs_uri
+            },
+            execution_id=exec_id
+        )
+        return False
+
+
+def validate_spreadsheet_duplicates_in_bq(
+    bq_client: bigquery.Client,
+    bq_table_name: str
+) -> Dict[str, Any]:
+    """
+    スプレッドシートテーブルの重複をチェック
+
+    Args:
+        bq_client: BigQueryクライアント
+        bq_table_name: BigQueryテーブル名（ss_プレフィックス付き）
+
+    Returns:
+        検証結果の辞書
+    """
+    errors = []
+
+    # ユニークキー定義を取得
+    unique_keys = SPREADSHEET_UNIQUE_KEYS_CONFIG.get(bq_table_name, [])
+    if not unique_keys:
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "spreadsheet_duplicate_check",
+            "table_name": bq_table_name,
+            "status": "SKIPPED",
+            "message": "ユニークキーが定義されていません"
+        }
+
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{bq_table_name}"
+    key_cols = ", ".join(unique_keys)
+
+    # 重複チェッククエリ
+    query = f"""
+    SELECT {key_cols}, COUNT(*) as duplicate_count
+    FROM `{table_id}`
+    GROUP BY {key_cols}
+    HAVING COUNT(*) > 1
+    LIMIT 10
+    """
+
+    try:
+        result = bq_client.query(query).result()
+        duplicates = [dict(row) for row in result]
+        duplicate_count = len(duplicates)
+
+        if duplicate_count > 0:
+            errors.append({
+                "type": "DUPLICATE_RECORDS",
+                "message": f"重複レコードが存在します（サンプル: {duplicate_count}件）",
+                "details": {
+                    "unique_keys": unique_keys,
+                    "sample_duplicates": duplicates
+                }
+            })
+
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "spreadsheet_duplicate_check",
+            "table_name": bq_table_name,
+            "status": "ERROR" if errors else "OK",
+            "unique_keys": unique_keys,
+            "duplicate_sample_count": duplicate_count,
+            "errors": errors
+        }
+
+    except Exception as e:
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "service": "gcs-to-bq",
+            "validation_type": "spreadsheet_duplicate_check",
+            "table_name": bq_table_name,
+            "status": "ERROR",
+            "errors": [{
+                "type": "QUERY_ERROR",
+                "message": f"重複チェッククエリ実行エラー: {str(e)}"
+            }]
+        }
+
+
+def process_spreadsheet_tables(
+    bq_client: bigquery.Client,
+    storage_client: storage.Client,
+    tables: List[str] = None,
+    execution_id: str = None
+) -> Dict[str, Any]:
+    """
+    スプレッドシートテーブルを一括処理
+
+    Args:
+        bq_client: BigQueryクライアント
+        storage_client: GCSクライアント
+        tables: 処理対象テーブルリスト（省略時は全テーブル）
+        execution_id: 実行ID
+
+    Returns:
+        処理結果の辞書
+    """
+    exec_id = execution_id or get_execution_id()
+    target_tables = tables or list(SPREADSHEET_TABLE_CONFIG.keys())
+
+    print("\n" + "=" * 60)
+    print(f"スプレッドシート → BigQuery ロード処理")
+    print(f"対象テーブル: {', '.join(target_tables)}")
+    print("=" * 60)
+
+    # 処理開始ログ
+    log_pipeline_event(
+        action="spreadsheet_load_start",
+        status="INFO",
+        message=f"スプレッドシートロード処理を開始",
+        details={
+            "tables": target_tables,
+            "table_count": len(target_tables)
+        },
+        execution_id=exec_id
+    )
+
+    success_count = 0
+    error_count = 0
+    results = []
+
+    for table_name in target_tables:
+        config = SPREADSHEET_TABLE_CONFIG.get(table_name)
+        if not config:
+            print(f"⚠️  未定義のテーブル: {table_name}")
+            error_count += 1
+            results.append({"table": table_name, "status": "error", "reason": "undefined"})
+            continue
+
+        bq_table_name = config["bq_table_name"]
+
+        # ロード実行
+        if load_spreadsheet_to_bigquery(bq_client, storage_client, table_name, exec_id):
+            # 重複チェック
+            if VALIDATION_ENABLED:
+                dup_result = validate_spreadsheet_duplicates_in_bq(bq_client, bq_table_name)
+                log_validation_result(dup_result)
+
+                if dup_result.get("status") == "ERROR":
+                    for error in dup_result.get("errors", []):
+                        print(f"   ⚠️  重複チェックエラー: {error.get('message')}")
+                elif dup_result.get("status") == "SKIPPED":
+                    print(f"   ⏭️  重複チェックスキップ: ユニークキー未定義")
+                else:
+                    print(f"   ✅ バリデーションOK: 重複チェック passed")
+
+            success_count += 1
+            results.append({"table": table_name, "bq_table": bq_table_name, "status": "success"})
+        else:
+            error_count += 1
+            results.append({"table": table_name, "bq_table": bq_table_name, "status": "error"})
+
+    print("\n" + "=" * 60)
+    print(f"スプレッドシート処理完了: 成功 {success_count} / エラー {error_count}")
+    print("=" * 60)
+
+    # 処理完了ログ
+    final_status = "OK" if error_count == 0 else "WARNING"
+    log_pipeline_event(
+        action="spreadsheet_load_complete",
+        status=final_status,
+        message=f"スプレッドシートロード処理が完了",
+        details={
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results
+        },
+        execution_id=exec_id
+    )
+
+    return {
+        "success_count": success_count,
+        "error_count": error_count,
+        "results": results
+    }
+
 
 # ============================================================
 # ユーティリティ関数
@@ -1041,6 +1828,8 @@ def load_endpoint():
 
     注意: 冪等性を保証するため、2024/9以降のデータは全て削除されてから追加されます。
     """
+    exec_id = get_execution_id()
+
     try:
         payload = request.get_json(force=True, silent=True) or {}
         yyyymm = payload.get("yyyymm")  # 省略可能
@@ -1064,26 +1853,48 @@ def load_endpoint():
         print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
         print("=" * 60)
 
+        # 処理開始ログ
+        log_pipeline_event(
+            action="load_start",
+            status="INFO",
+            message=f"GCS → BigQueryロード処理を開始",
+            details={
+                "target_months": target_months,
+                "tables": tables,
+                "table_count": len(tables)
+            },
+            execution_id=exec_id
+        )
+
         success_count = 0
         error_count = 0
         results = []
 
         for table_name in tables:
-            print(f"\n📊 処理中: {table_name}")
+            # 累積型テーブルかどうかで処理を分岐
+            if table_name in CUMULATIVE_TABLE_CONFIG:
+                # 累積型テーブル: 専用処理（source_folder追加、重複除去）
+                table_success = process_cumulative_table(
+                    bq_client, storage_client, table_name, target_months, exec_id
+                )
+            else:
+                # 単月型テーブル: 従来の処理
+                print(f"\n📊 処理中（単月型）: {table_name}")
 
-            # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
-            delete_partition_data(bq_client, table_name)
+                # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
+                delete_partition_data(bq_client, table_name)
 
-            # 全年月のCSVをロード
-            table_success = True
-            for month in target_months:
-                if not load_csv_to_bigquery(bq_client, table_name, month):
-                    table_success = False
+                # 全年月のCSVをロード
+                table_success = True
+                for month in target_months:
+                    if not load_csv_to_bigquery(bq_client, table_name, month, exec_id):
+                        table_success = False
+
+                if table_success:
+                    # テーブルとカラムの説明を更新
+                    update_table_and_column_descriptions(bq_client, storage_client, table_name)
 
             if table_success:
-                # テーブルとカラムの説明を更新
-                update_table_and_column_descriptions(bq_client, storage_client, table_name)
-
                 # ============================================================
                 # バリデーション: 重複チェック
                 # ============================================================
@@ -1106,124 +1917,65 @@ def load_endpoint():
                 results.append({"table": table_name, "status": "error"})
 
         print("\n" + "=" * 60)
-        print(f"処理完了: 成功 {success_count} / エラー {error_count}")
+        print(f"Drive処理完了: 成功 {success_count} / エラー {error_count}")
         print("=" * 60)
+
+        # ============================================================
+        # スプレッドシートテーブルのロード処理
+        # ============================================================
+        spreadsheet_result = process_spreadsheet_tables(
+            bq_client, storage_client, execution_id=exec_id
+        )
+
+        # 全体の結果を集計
+        total_success = success_count + spreadsheet_result["success_count"]
+        total_error = error_count + spreadsheet_result["error_count"]
+
+        # 処理完了ログ
+        final_status = "OK" if total_error == 0 else "WARNING"
+        log_pipeline_event(
+            action="load_complete",
+            status=final_status,
+            message=f"GCS → BigQueryロード処理が完了",
+            details={
+                "target_months": target_months,
+                "drive_success_count": success_count,
+                "drive_error_count": error_count,
+                "spreadsheet_success_count": spreadsheet_result["success_count"],
+                "spreadsheet_error_count": spreadsheet_result["error_count"],
+                "total_success_count": total_success,
+                "total_error_count": total_error,
+                "drive_results": results,
+                "spreadsheet_results": spreadsheet_result["results"]
+            },
+            execution_id=exec_id
+        )
 
         return jsonify({
             "status": "completed",
             "target_months": target_months,
-            "success": success_count,
-            "error": error_count,
-            "results": results
+            "drive": {
+                "success": success_count,
+                "error": error_count,
+                "results": results
+            },
+            "spreadsheet": spreadsheet_result,
+            "total_success": total_success,
+            "total_error": total_error
         }), 200
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
 
-@app.route("/pubsub", methods=["POST"])
-def pubsub_endpoint():
-    """
-    Pub/Sub トリガーエンドポイント
-    drive-to-gcs完了後に自動実行される
+        # エラーログ
+        log_pipeline_event(
+            action="load_complete",
+            status="ERROR",
+            message=f"GCS → BigQueryロード処理でエラーが発生",
+            details={"error": str(e)},
+            execution_id=exec_id
+        )
 
-    メッセージ例:
-    {
-        "message": {
-            "data": "eyJ5eXl5bW0iOiAiMjAyNTA5In0="  # base64: {"yyyymm": "202509"}
-        }
-    }
-
-    注意: 冪等性を保証するため、2024/9以降のデータは全て削除されてから追加されます。
-    """
-    try:
-        envelope = request.get_json(force=True, silent=True) or {}
-        msg = envelope.get("message", {})
-        data_b64 = msg.get("data")
-
-        if not data_b64:
-            return ("Bad Request: no message.data", 400)
-
-        payload = json.loads(base64.b64decode(data_b64).decode("utf-8"))
-        yyyymm = payload.get("yyyymm")
-        tables = payload.get("tables", list(TABLE_CONFIG.keys()))
-
-        if not yyyymm:
-            return jsonify({"error": "yyyymm is required"}), 400
-
-        print(f"[INFO] Pub/Sub triggered: yyyymm={yyyymm}")
-
-        # Transform実行（指定月のみ）
-        print("=" * 60)
-        print(f"raw/ → proceed/ 変換処理")
-        print(f"対象年月: {yyyymm}")
-        print("=" * 60)
-
-        storage_client = storage.Client()
-        transform_success = 0
-        transform_error = 0
-
-        for table_name in tables:
-            if transform_excel_to_csv(storage_client, table_name, yyyymm):
-                transform_success += 1
-            else:
-                transform_error += 1
-
-        print(f"変換完了: 成功 {transform_success} / エラー {transform_error}")
-
-        # Load実行（2024/9以降の全年月）
-        target_months = get_available_months_from_gcs(storage_client)
-
-        print("=" * 60)
-        print(f"proceed/ → BigQuery ロード処理")
-        print(f"対象年月: {', '.join(target_months)}")
-        print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
-        print("=" * 60)
-
-        bq_client = bigquery.Client(project=PROJECT_ID)
-        load_success = 0
-        load_error = 0
-
-        for table_name in tables:
-            print(f"\n📊 処理中: {table_name}")
-
-            # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
-            delete_partition_data(bq_client, table_name)
-
-            # 全年月のCSVをロード
-            table_success = True
-            for month in target_months:
-                if not load_csv_to_bigquery(bq_client, table_name, month):
-                    table_success = False
-
-            if table_success:
-                update_table_and_column_descriptions(bq_client, storage_client, table_name)
-
-                # ============================================================
-                # バリデーション: 重複チェック
-                # ============================================================
-                if VALIDATION_ENABLED:
-                    dup_result = validate_duplicates_in_bq(bq_client, table_name)
-                    log_validation_result(dup_result)
-
-                    if dup_result.get("status") == "ERROR":
-                        for error in dup_result.get("errors", []):
-                            print(f"   ⚠️  重複チェックエラー: {error.get('message')}")
-                    elif dup_result.get("status") == "SKIPPED":
-                        print(f"   ⏭️  重複チェックスキップ: ユニークキー未定義")
-                    else:
-                        print(f"   ✅ バリデーションOK: 重複チェック passed")
-
-                load_success += 1
-            else:
-                load_error += 1
-
-        print(f"ロード完了: 成功 {load_success} / エラー {load_error}")
-
-        return ("", 204)
-
-    except Exception as e:
-        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route("/", methods=["GET"])

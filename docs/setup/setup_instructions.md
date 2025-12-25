@@ -113,32 +113,31 @@ gcloud run deploy drive-to-gcs \
   --timeout 540
 ```
 
-## 7. Pub/Subトリガーの設定
+## 7. Cloud Workflowsの設定
 
-### 7.1 Pub/Subトピックの作成
+### 7.1 Cloud Workflowsのデプロイ
 ```bash
-gcloud pubsub topics create drive-sync-trigger
+# ワークフローをデプロイ
+gcloud workflows deploy data-pipeline \
+  --location=asia-northeast1 \
+  --source=workflows/data_pipeline.yaml \
+  --service-account=sa-data-platform@data-platform-prod-475201.iam.gserviceaccount.com
 ```
 
-### 7.2 Cloud Runサービスの購読設定
+### 7.2 ワークフローの確認
 ```bash
-# Cloud RunのURLを取得
-SERVICE_URL=$(gcloud run services describe drive-to-gcs --region=asia-northeast1 --format='value(status.url)')
-
-# Pub/Sub購読を作成
-gcloud pubsub subscriptions create drive-sync-subscription \
-  --topic=drive-sync-trigger \
-  --push-endpoint="${SERVICE_URL}/pubsub" \
-  --push-auth-service-account=102847004309-compute@developer.gserviceaccount.com
+# デプロイ済みワークフローを確認
+gcloud workflows list --location=asia-northeast1
 ```
 
 ## 8. 動作確認
 
 ### 8.1 手動実行テスト
 ```bash
-# Pub/Subメッセージを送信
-gcloud pubsub topics publish drive-sync-trigger \
-  --message '{"yyyymm":"202509"}'
+# Cloud Workflowsで一括実行
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "replace"}'
 ```
 
 ### 8.2 GCS確認
@@ -250,10 +249,13 @@ gsutil cat gs://data-platform-landing-prod/proceed/202509/sales_target_and_achie
 ## 12. Cloud Scheduler による定期実行（オプション）
 
 ```bash
-# 毎月1日の9時に実行
-gcloud scheduler jobs create pubsub monthly-drive-sync \
+# 毎月1日の9時に実行（Cloud Workflowsを呼び出し）
+gcloud scheduler jobs create http monthly-pipeline-sync \
   --schedule="0 9 1 * *" \
-  --topic=drive-sync-trigger \
-  --message-body='{"yyyymm":"auto"}' \
-  --time-zone="Asia/Tokyo"
+  --uri="https://workflowexecutions.googleapis.com/v1/projects/data-platform-prod-475201/locations/asia-northeast1/workflows/data-pipeline/executions" \
+  --http-method=POST \
+  --message-body='{"argument":"{\"mode\":\"replace\"}"}' \
+  --oauth-service-account-email=sa-data-platform@data-platform-prod-475201.iam.gserviceaccount.com \
+  --time-zone="Asia/Tokyo" \
+  --location=asia-northeast1
 ```

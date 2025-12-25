@@ -1,4 +1,4 @@
-import os, io, json, base64, datetime as dt, pandas as pd, requests, re, traceback
+import os, io, json, datetime as dt, pandas as pd, requests, re, traceback
 from flask import Flask, request, jsonify  # ← jsonify を追加
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -441,25 +441,6 @@ def sync_drive_to_gcs(mode: str = "replace", target_month: str = None) -> dict:
     return results
 
 
-# ============== Pub/Sub 本体処理（後方互換） ==============
-def entrypoint_pubsub(event, context):
-    """
-    入力: {"yyyymm":"202510"} を base64で包んだ Pub/Sub message.data
-    対象: 親フォルダ直下 or 共有ドライブ全体から『name=YYYYMM』のフォルダを見つけ、
-          その配下の **.xlsx** を raw/{yyyymm}/{slug}.xlsx として保存
-    """
-    payload = {}
-    if "data" in event and event["data"]:
-        payload = json.loads(base64.b64decode(event["data"]).decode("utf-8"))
-    yyyymm = payload.get("yyyymm") or _yyyymm_now_utc()
-    mode = payload.get("mode", DEFAULT_MODE)
-
-    # 新しい同期関数を呼び出し
-    if mode == "replace":
-        sync_drive_to_gcs(mode="replace")
-    else:
-        sync_drive_to_gcs(mode="append", target_month=yyyymm)
-
 # ============== Cloud Run HTTP 受け口 ==============
 app = Flask(__name__)
 
@@ -519,37 +500,6 @@ def sync_endpoint():
             "timestamp": dt.datetime.utcnow().isoformat() + "Z"
         }), 500
 
-
-@app.route("/pubsub", methods=["POST"])
-def pubsub_http():
-    try:
-        envelope = request.get_json(force=True, silent=True) or {}
-        if not isinstance(envelope, dict):
-            return ("Bad Request: not JSON", 400)
-        msg = envelope.get("message", {})
-        data = msg.get("data")
-        event = {"data": data}
-        entrypoint_pubsub(event, None)
-        return ("", 204)
-    except Exception as e:
-        traceback.print_exc()
-        return (f"Error: {e}", 500)
-
-@app.route("/", methods=["POST"])
-def eventarc_pubsub():
-    try:
-        payload = request.get_json(force=True, silent=True) or {}
-        msg = payload.get("message", {})
-        data_b64 = msg.get("data") or (payload.get("data") if isinstance(payload.get("data"), str) else None)
-        if not data_b64:
-            print(f"[WARN] Eventarc payload has no message.data. payload={payload}")
-            return ("Bad Request: no message.data", 400)
-        event = {"data": data_b64}
-        entrypoint_pubsub(event, None)
-        return ("", 204)
-    except Exception as e:
-        traceback.print_exc()
-        return (f"Error: {e}", 500)
 
 # --- かんたん診断ルート（追加分） ---
 @app.route("/debug/folder", methods=["GET"])

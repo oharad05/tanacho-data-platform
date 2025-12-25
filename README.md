@@ -32,7 +32,7 @@ Google Drive上の月次データをGCSに取り込み、BigQueryに連携し、
 | 権限 | 用途 |
 |------|------|
 | Cloud Run 起動元 | データ連携処理の実行 |
-| Pub/Sub パブリッシャー | 処理のトリガー送信 |
+| Workflows 起動元 | Cloud Workflowsの実行 |
 | BigQuery データ編集者 | テーブルの更新 |
 | Storage オブジェクト閲覧者 | ファイルの確認 |
 
@@ -63,11 +63,7 @@ Google Drive上のExcelファイルをBigQueryに連携します。
 ```
 【ステップ1】Google Driveにファイル配置（先方作業）
      ↓
-【ステップ2】Drive → GCS 同期
-     ↓
-【ステップ3】GCS → BigQuery 連携
-     ↓
-【ステップ4】DWH/DataMart 更新
+【ステップ2】Cloud Workflowsで一括実行
      ↓
 【完了】可視化環境に反映
 ```
@@ -82,67 +78,35 @@ Google Drive上のExcelファイルをBigQueryに連携します。
 
 ※ この作業はお客様側で行うため、あなたが実行する必要はありません。
 
-### ステップ2: Drive → GCS 同期
+### ステップ2: Cloud Workflowsで一括実行
 
 以下のコマンドをCloud Shellで実行します。
-`202510` の部分は対象月（YYYYMM形式）に変更してください。
+このコマンド1つで、Drive → GCS → BigQuery → DWH/DataMart更新 まで一括で実行されます。
 
 ```bash
-gcloud pubsub topics publish drive-monthly \
-  --message='{"yyyymm":"202510"}'
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "replace"}'
 ```
 
 **実行結果の確認**:
 ```
-messageIds:
-- '12345678901234567'
+Waiting for execution [xxxxx] to complete...done.
+result: '{"status":"SUCCESS","mode":"replace",...}'
+state: SUCCEEDED
 ```
 
-**処理時間**: 約1〜2分
+**処理時間**: 約10〜15分（全ステップ合計）
 
-### ステップ3: GCS → BigQuery 連携
+### オプション: 特定月のみ追加
 
-ステップ2の完了後（約2分待機）、以下を実行します。
+既存データに特定月のデータを追加する場合:
 
 ```bash
-gcloud pubsub topics publish transform-trigger \
-  --message='{"yyyymm":"202510"}'
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "append", "target_month": "202510"}'
 ```
-
-**補足**: このステップでは以下の処理が実行されます:
-- Excel → CSV変換（raw/ → proceed/）
-- **2024年9月以降の全データを削除**
-- **全年月のCSVをBigQueryにロード**
-
-これにより、何度実行しても同じ結果が得られます（冪等性保証）。
-
-**処理時間**: 約2〜3分
-
-### ステップ4: DWH/DataMart 更新
-
-ステップ3の完了後（約3分待機）、以下を実行します。
-
-```bash
-gcloud run jobs execute dwh-datamart-update \
-  --region asia-northeast1 \
-  --wait
-```
-
-**実行中の表示**:
-```
-Creating execution...
-Provisioning resources...done
-Starting execution...done
-Running execution...
-```
-
-**完了時の表示**:
-```
-Done.
-Execution [dwh-datamart-update-xxxxx] has successfully completed.
-```
-
-**処理時間**: 約3〜5分
 
 ### コマンドまとめ（Drive連携）
 
@@ -150,18 +114,15 @@ Execution [dwh-datamart-update-xxxxx] has successfully completed.
 # プロジェクト設定（初回のみ）
 gcloud config set project data-platform-prod-475201
 
-# ステップ2: Drive → GCS（※202510を対象月に変更）
-gcloud pubsub topics publish drive-monthly --message='{"yyyymm":"202510"}'
+# 全データ洗い替え（推奨）
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "replace"}'
 
-# （約2分待機）
-
-# ステップ3: GCS → BigQuery（※202510を対象月に変更）
-gcloud pubsub topics publish transform-trigger --message='{"yyyymm":"202510"}'
-
-# （約3分待機）
-
-# ステップ4: DWH/DataMart更新
-gcloud run jobs execute dwh-datamart-update --region asia-northeast1 --wait
+# 特定月のみ追加（オプション）
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "append", "target_month": "202510"}'
 ```
 
 ---
@@ -229,7 +190,7 @@ curl -X POST "https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app/syn
 
 権限が不足しています。管理者に以下を依頼してください:
 - Cloud Run 起動元
-- Pub/Sub パブリッシャー
+- Workflows 起動元
 - BigQuery データ編集者
 
 ### 「Project not found」と表示される
@@ -298,24 +259,16 @@ Looker Studio (ダッシュボード)
 ```
 1. Google Drive配置（手動・先方作業）
    ↓
-2. Cloud Run: Drive → GCS (raw/)
-   サービス: drive-to-gcs (run_service/main.py)
-   トリガー: Pub/Sub topic 'drive-monthly'
+2. Cloud Workflows: data-pipeline（一括実行）
+   ├─ Step 1: Drive → GCS (drive-to-gcs)
+   ├─ Step 2: 待機 (2分)
+   ├─ Step 3: スプレッドシート → GCS (spreadsheet-to-bq)
+   ├─ Step 4: 待機 (2分)
+   ├─ Step 5: GCS → BigQuery (gcs-to-bq)
+   ├─ Step 6: 待機 (3分)
+   └─ Step 7: DWH/DataMart更新 (dwh-datamart-update Job)
    ↓
-3. Cloud Run: raw/ → proceed/ + BigQuery連携
-   サービス: gcs-to-bq (gcs_to_bq_service/main.py)
-   トリガー: Pub/Sub topic 'transform-trigger'
-   処理内容:
-     - Excel → CSV変換 (raw/ → proceed/)
-     - CSV → BigQuery読み込み (proceed/ → corporate_data)
-   ↓
-4. DWHテーブル更新（手動）
-   スクリプト: sql/scripts/update_dwh.sh
-   ↓
-5. データマート更新（手動）
-   スクリプト: sql/scripts/update_datamart.sh
-   ↓
-6. Looker Studio可視化
+3. Looker Studio可視化
 ```
 
 ### 自動化範囲
@@ -323,19 +276,13 @@ Looker Studio (ダッシュボード)
 | ステップ | 処理内容 | 自動化 | トリガー方法 |
 |---------|---------|--------|-------------|
 | 1 | Drive配置 | ✗ 手動 | 先方作業 |
-| 2 | Drive→GCS(raw/) | ✓ 自動 | Pub/Sub: drive-monthly |
-| 3 | raw/→proceed/ + BQ連携 | ✓ 自動 | Pub/Sub: transform-trigger |
-| 4 | DWH作成 | ✗ 手動 | update_dwh.sh |
-| 5 | DataMart作成 | ✗ 手動 | update_datamart.sh |
-| 6 | Looker Studio | - | 手動参照 |
+| 2 | パイプライン実行 | ✓ 自動 | Cloud Workflows: data-pipeline |
+| 3 | Looker Studio | - | 手動参照 |
 
 ### インフラ構成
 
-**Pub/Sub**:
-- Topic: `drive-monthly`
-  - Subscription: `drive-monthly-sub` → Cloud Run `drive-to-gcs` (push)
-- Topic: `transform-trigger`
-  - Subscription: `transform-trigger-sub` → Cloud Run `gcs-to-bq` (push)
+**Cloud Workflows**:
+- `data-pipeline` (asia-northeast1) - パイプライン全体のオーケストレーション
 
 **Cloud Run Services**:
 - `drive-to-gcs` (asia-northeast1) - run_service/main.py
@@ -350,25 +297,27 @@ Looker Studio (ダッシュボード)
 
 ## 月次データ更新手順
 
-### 1. Drive → GCS 同期（自動）
+### 1. Cloud Workflowsで一括実行（推奨）
 
-先方がGoogle Driveにファイルを配置すると、Pub/Sub経由で自動的に処理されます。
+先方がGoogle Driveにファイルを配置した後、Cloud Workflowsで一括処理します。
 
-手動実行する場合:
 ```bash
-python sync_drive_to_gcs.py {YYYYMM}
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "replace"}'
 ```
 
-例: `python sync_drive_to_gcs.py 202509`
+### 2. 個別サービスの手動実行（デバッグ用）
 
-### 2. raw → proceed 変換 + BigQuery連携（自動）
-
-ステップ1の完了後、Pub/Sub経由で自動的に処理されます。
-
-手動実行する場合:
+個別にサービスを呼び出す場合:
 ```bash
-python transform_raw_to_proceed.py {YYYYMM}
-python load_to_bigquery.py {YYYYMM} --replace
+# Drive → GCS
+curl -X POST "https://drive-to-gcs-102847004309.asia-northeast1.run.app/sync" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)"
+
+# GCS → BigQuery
+curl -X POST "https://gcs-to-bq-102847004309.asia-northeast1.run.app/load" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)"
 ```
 
 ### 3. マスターデータ更新（初回のみ必要）
@@ -674,7 +623,7 @@ Google スプレッドシートから直接BigQueryにデータを連携する�
 | **GCSパス** | `/raw/{yyyymm}/`, `/proceed/{yyyymm}/` | `/spreadsheet/raw/` |
 | **設定ファイル** | `/config/mapping/mapping_files.csv` | `/spreadsheet/config/mapping/mapping_files.csv` |
 | **BQテーブル** | `corporate_data.*` | `corporate_data.ss_*` |
-| **トリガー** | Pub/Sub: `drive-monthly` | Cloud Scheduler: `spreadsheet-monthly` |
+| **トリガー** | Cloud Workflows: `data-pipeline` | Cloud Workflows: `data-pipeline` |
 
 ### 設定ファイル
 
@@ -758,8 +707,8 @@ tanacho-pipeline/
 
 | ロール | 目的 |
 |--------|------|
+| `roles/workflows.invoker` | Cloud Workflowsの実行 |
 | `roles/run.invoker` | Cloud Run Services/Jobsの実行 |
-| `roles/pubsub.publisher` | Pub/Subメッセージの発行 |
 | `roles/bigquery.dataEditor` | BigQueryテーブルの更新 |
 | `roles/storage.objectViewer` | GCSファイルの閲覧（確認用） |
 
@@ -771,11 +720,11 @@ PROJECT_ID="data-platform-prod-475201"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:$USER_EMAIL" \
-  --role="roles/run.invoker"
+  --role="roles/workflows.invoker"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:$USER_EMAIL" \
-  --role="roles/pubsub.publisher"
+  --role="roles/run.invoker"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:$USER_EMAIL" \
@@ -794,34 +743,24 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 # 1. プロジェクトを設定
 gcloud config set project data-platform-prod-475201
 
-# 2. Drive → GCS 同期（対象月を指定）
-gcloud pubsub topics publish drive-monthly \
-  --message='{"yyyymm":"202510"}'
-
-# 3. GCS → BigQuery 連携（2の完了後に実行）
-gcloud pubsub topics publish transform-trigger \
-  --message='{"yyyymm":"202510"}'
-
-# 4. DWH/DataMart更新
-gcloud run jobs execute dwh-datamart-update \
-  --region asia-northeast1 \
-  --wait
+# 2. パイプライン実行（全ステップを一括実行）
+gcloud workflows run data-pipeline \
+  --location=asia-northeast1 \
+  --data='{"mode": "replace"}'
 ```
 
-### Cloud Runサービスを直接呼び出す場合
+### Cloud Runサービスを直接呼び出す場合（デバッグ用）
 
 ```bash
 # Drive → GCS
-curl -X POST "https://drive-to-gcs-ly6d7o7r3a-an.a.run.app/sync" \
+curl -X POST "https://drive-to-gcs-102847004309.asia-northeast1.run.app/sync" \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  -H "Content-Type: application/json" \
-  -d '{"yyyymm":"202510"}'
+  -H "Content-Type: application/json"
 
 # GCS → BigQuery
-curl -X POST "https://gcs-to-bq-ly6d7o7r3a-an.a.run.app/transform" \
+curl -X POST "https://gcs-to-bq-102847004309.asia-northeast1.run.app/load" \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  -H "Content-Type: application/json" \
-  -d '{"yyyymm":"202510"}'
+  -H "Content-Type: application/json"
 ```
 
 ## 開発環境

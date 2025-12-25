@@ -7,17 +7,17 @@ sql/tmp_file/に正解データのpdfがあります｡
 検証する項目の粒度は､「main_category×secondary_category×secondary_department」です｡pdfに値が載っているもののみ検証してください｡
 
 ## 1.データ比較
-### 手順1-1.pdfとcsvの比較
+### 手順1-1.csv_from_pdfpdfとcsvの比較
 ・単月の場合はdate(2025/09)などを指定します｡2025/09の場合､下記の{yymm}は2509、{yyyymm}は202509と読み解いてください｡
 1-1.main_department='東京支店'
-pdf名: {yymm}損益東京.pdf の全ページ
+pdfのデータ: sql/tmp_file/BI テスト - pdf_東京_{yyyymm}.csv
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位)_{yyyymm}.csv の東京支店の範囲
 1-2.main_department='長崎支店'
-pdf名: {yymm}損益長崎.pdf の1ページ目
+pdfのデータ: sql/tmp_file/BI テスト - pdf_長崎_{yyyymm}.csv
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位)_{yyyymm}.csv の長崎支店の範囲
 main_category×secondary_category×secondary_department
 1-3.main_department='福岡支店'
-pdf名: {yymm}損益福岡.pdf の1ページ目
+pdfのデータ: sql/tmp_file/BI テスト - pdf_福岡_{yyyymm}.csv
 計算結果: sql/tmp_file/SSでの可視化 - PL(月単位)_{yyyymm}.csv の福岡支店の範囲
 ・累積の場合は「累積」と指定します｡日付は2025/8時点の結果を「SSでの可視化 - PL(累計)_202508.csv」で保存しているので､そこと比較してください｡
 pdfの参照先は､202508の場合は全て2ページ目です｡
@@ -40,8 +40,9 @@ is_equal(diff_pdf_csv=0なら1､そうでないならゼロ)
 is_large_diff(diff_pdf_csvの絶対値が6以上なら1､そうでないなら0)
 invest_result(一旦nullで定義)
 
-### 手順1-3.調査結果・提案の入力
+### 手順1-3.調査結果・提案の入力及びファイル出力
 invest_resultに､調査した結果をテキストで入力してください｡
+その後､今回の処理で生成したファイルを結合し､docs/test/test_output_{実行日のyyyymmdd}_all.csvという形式で保存してください｡
 
 ### 手順1-4.比較結果の報告
 手順1-2の出力のうち､is_equal=0の項目を表示してください｡
@@ -330,26 +331,45 @@ bash sql/scripts/update_datamart.sh
 Cloud Workflows
     ├── Step 1: drive-to-gcs
     │    - 1-1: 整合性確認
-    │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート
-    │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート
+    │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート (to workflows)
+    │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート (to workflows)
     ├── Step 2: 待機 (2分)
     ├── Step 3: spreadsheet-to-bq
     │    - 3-1: 整合性確認
-    │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート
-    │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート
+    │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート (to workflows + to logging)
+    │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート (to workflows)
     ├── Step 4: 待機 (2分)
     ├── Step 5: gcs-to-bq
     │    - 5-1: 整合性確認
-    │      - カラムの不整合が起きている場合に、起きているテーブルと不整合が起きているカラムをアラート
-    │      - 何らかの原因でBigqueryへの取り込みエラーがあった場合、そのテーブル名をアラート
+    │      - カラムの不整合が起きている場合に、起きているテーブルと不整合が起きているカラムをアラート (to workflows + to logging)
+    │      - 何らかの原因でBigqueryへの取り込みエラーがあった場合、そのテーブル名をアラート (to workflows)
     ├── Step 6: 待機 (3分)
     ├── Step 7: dwh-datamart-update (Job実行・完了待ち)
-    │    - corporate_data配下のテーブルをcorporate_data_bkにコピー
-    │    - コピーしたテーブルと今回取り込んだあとのcorporate_dataの件数を比較し、テーブルごとの件数をloggingに出力
+    │    - corporate_data配下のテーブルをcorporate_data_bkにコピー (to logging)
+    │    - コピーしたテーブルと今回取り込んだあとのcorporate_dataの件数を比較し、テーブルごとの件数をloggingに出力 (to logging)
     │    - 7-1: 整合性確認
-    │      - main_category='その他'に値が入っている場合alert
-    │      - corporate_data配下各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し、発生していたらアラート
-    └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に)
+    │      - main_category='その他'に値が入っている場合alert (to logging)
+    │      - corporate_data配下各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し、発生していたらアラート (to logging)
+    └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に) ※未実装
+```
+
+### 出力先の説明
+
+| 出力先 | 確認方法 | 説明 |
+|-------|---------|------|
+| to workflows | GCPコンソール > Cloud Workflows > 実行履歴 > 実行ID選択 | HTTPレスポンスに含まれる`errors`/`failed`。各ステップの結果として確認可能 |
+| to logging | GCPコンソール > ロギング > ログエクスプローラ | `validation_logger`経由で出力。構造化ログとして検索・フィルタリング可能 |
+
+### Loggingフィルタ例
+
+```
+# Workflowのログ
+resource.type="workflows.googleapis.com/Workflow"
+resource.labels.workflow_id="data-pipeline"
+
+# 各サービスのバリデーションログ
+jsonPayload.validation_type="column_and_row_check"
+jsonPayload.status="ERROR"
 ```
 
 ### Cloud Runサービス一覧

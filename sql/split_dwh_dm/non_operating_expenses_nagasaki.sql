@@ -7,126 +7,133 @@ DWH: 営業外費用（社内利息）- 長崎支店
 対象支店: 長崎支店
 集計単位: 工事営業部、硝子建材営業部
 
-計算ロジック:
-  工事営業部・硝子建材営業部共通:
-  社内利息 = (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
+計算ロジック（2025-12-25 仕様書準拠に修正）:
+  計算式: ①×②＋③×④＋⑤×⑥＋⑦×⑧（％）＋⑨×⑧（％）
 
-  ⑩在庫損益: ss_inventory_advance_nagasaki.inventory_profit_loss（スプレッドシート連携）
-  前受け金: ss_inventory_advance_nagasaki.advance_received（スプレッドシート連携）
-     紐付け条件: posting_month = year_month, category = detail_category
+  参照条件:
+  - 実行月の2か月前 = DATE_SUB(year_month, INTERVAL 1 MONTH)
+  - source_folder = CAST(FORMAT_DATE('%Y%m', DATE_SUB(year_month, INTERVAL 1 MONTH)) AS INT64)
 
-  参照月の考え方:
-  - 出力月（year_month）: レポート対象月（例: 2025-09-01）
-  - 実行月: 出力月の翌月（例: 2025-10-01）
-  - 「実行月の2ヶ月前」: 出力月の1ヶ月前（例: 2025-08-01）
-    → billing_balance, stocks は出力月の1ヶ月前を参照
-  - 「何も書かれていない」: 出力月と同じ（例: 2025-09-01）
-    → internal_interest, ms_allocation_ratio は出力月を参照
+  【工事営業部】
+  ① 売掛金: billing_balance, branch_code = 61
+  ② 売掛金利率: internal_interest, 売掛金のinterest_rate
+  ③ 未落手形: billing_balance, branch_code = 61
+  ④ 未落手形利率: internal_interest, 未決済手形のinterest_rate
+  ⑤ 在庫・未成工事: stocks, 長崎, 工事, 期末未成工事+当月在庫
+  ⑥ 在庫利率: internal_interest, 棚卸在庫・未成工事支出金のinterest_rate
+  ⑦ 建物利息: internal_interest, 建物+土地のinterest合計
+  ⑧ 案分比率: ms_allocation_ratio, 長崎, 工事, 減価償却案分
+  ⑨ 償却資産利息: internal_interest, 償却資産のinterest
+  ⑩ 在庫損益・前受け金: ss_inventory_advance_nagasaki（スプレッドシート連携）
+
+  【硝子建材営業部】
+  ① 売掛金: billing_balance, branch_code IN (65, 66)
+  ② 売掛金利率: internal_interest, 売掛金のinterest_rate
+  ③ 未落手形: billing_balance, branch_code IN (65, 66)
+  ④ 未落手形利率: internal_interest, 未決済手形のinterest_rate
+  ⑤ 在庫・未成工事: stocks, 長崎, 硝子建材, 期末未成工事+当月在庫
+  ⑥ 在庫利率: internal_interest, 棚卸在庫・未成工事支出金のinterest_rate
+  ⑦ 建物利息: internal_interest, 建物のinterest
+  ⑧ 案分比率: ms_allocation_ratio, 長崎, 硝子建材, 減価償却案分
+  ⑨ 償却資産利息: internal_interest, 償却資産のinterest
+  ⑩ 在庫損益・前受け金: ss_inventory_advance_nagasaki（スプレッドシート連携）
 
 出力スキーマ:
   - year_month: 対象年月（DATE型）
   - branch: 支店名（長崎支店）
-  - detail_category: 詳細分類（工事営業部、硝子建材営業部、長崎支店計）
+  - detail_category: 詳細分類（工事営業部計、硝子建材営業部計、長崎支店計）
   - interest_expense: 社内利息（円）
-
-注意事項:
-  - 前受け金（advance_received）はスプレッドシート連携で取得し、①売掛金に加算
 ============================================================
 */
 
 CREATE OR REPLACE TABLE `data-platform-prod-475201.corporate_data_dwh.non_operating_expenses_nagasaki` AS
 WITH
--- 対象年月の定義（internal_interestのyear_monthを基準とする）
+-- ============================================================
+-- 対象年月の生成（internal_interestから取得）
+-- ============================================================
 target_months AS (
   SELECT DISTINCT year_month
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
+    AND category = '社内利息（A）'
 ),
 
--- 【工事営業部】の計算
--- ① 売掛金（営業所コード=061）- 出力月の1ヶ月前を参照
--- 重複データを集約して1行にする
-construction_receivables AS (
+-- ============================================================
+-- billing_balance: 売掛金・未落手形（実行月2か月前参照）
+-- ============================================================
+
+-- 工事営業部（branch_code: 61）
+billing_construction AS (
   SELECT
     tm.year_month,
-    SUM(bb.current_month_sales_balance) / COUNT(*) AS receivables_amount  -- 重複排除のため平均を計算
+    SUM(bb.current_month_sales_balance) AS receivables_amount,  -- ①
+    SUM(bb.unsettled_bill_balance) AS bills_amount              -- ③
   FROM target_months tm
-  INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
+  LEFT JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
     ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
-  WHERE bb.branch_code = 61
+    AND bb.branch_code = 61
+    AND bb.source_folder = CAST(FORMAT_DATE('%Y%m', DATE_SUB(tm.year_month, INTERVAL 1 MONTH)) AS INT64)
   GROUP BY tm.year_month
 ),
 
--- ② 売掛金利率 - 出力月を参照
+-- 硝子建材営業部（branch_code: 65, 66）
+-- 注: 仕様書は「063または065」だが、実データにbranch_code 63は存在しない
+-- 長崎硝子建材営１=65、長崎硝子建材営２=66
+billing_glass AS (
+  SELECT
+    tm.year_month,
+    SUM(bb.current_month_sales_balance) AS receivables_amount,  -- ①
+    SUM(bb.unsettled_bill_balance) AS bills_amount              -- ③
+  FROM target_months tm
+  LEFT JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
+    ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
+    AND bb.branch_code IN (65, 66)
+    AND bb.source_folder = CAST(FORMAT_DATE('%Y%m', DATE_SUB(tm.year_month, INTERVAL 1 MONTH)) AS INT64)
+  GROUP BY tm.year_month
+),
+
+-- ============================================================
+-- internal_interest: 利率・利息
+-- ============================================================
+
+-- ②売掛金利率
 receivables_rate AS (
   SELECT
     year_month,
-    interest_rate
+    interest_rate  -- ②
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
     AND breakdown = '売掛金'
 ),
 
--- ③ 未落手形（営業所コード=061）- 出力月の1ヶ月前を参照
--- 重複データを集約して1行にする
-construction_bills AS (
-  SELECT
-    tm.year_month,
-    SUM(bb.unsettled_bill_balance) / COUNT(*) AS bills_amount  -- 重複排除のため平均を計算
-  FROM target_months tm
-  INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
-    ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
-  WHERE bb.branch_code = 61
-  GROUP BY tm.year_month
-),
-
--- ④ 未落手形利率 - 出力月を参照
+-- ④未落手形利率
 bills_rate AS (
   SELECT
     year_month,
-    interest_rate
+    interest_rate  -- ④
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
     AND breakdown = '未決済手形'
 ),
 
--- ⑤ 在庫・未成工事（工事部門）- 出力月の1ヶ月前を参照
-construction_inventory AS (
-  SELECT
-    tm.year_month,
-    COALESCE(SUM(DISTINCT s.amount), 0) AS inventory_amount
-  FROM target_months tm
-  LEFT JOIN (
-    -- 重複データを除外
-    SELECT DISTINCT year_month, branch, department, category, amount
-    FROM `data-platform-prod-475201.corporate_data.stocks`
-  ) s
-    ON s.year_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
-    AND s.branch = '長崎'
-    AND s.department = '工事'
-    AND s.category IN ('期末未成工事', '当月在庫')
-  GROUP BY tm.year_month
-),
-
--- ⑥ 在庫利率 - 出力月を参照
+-- ⑥在庫利率
 inventory_rate AS (
   SELECT
     year_month,
-    interest_rate
+    interest_rate  -- ⑥
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
     AND breakdown = '棚卸在庫・未成工事支出金'
 ),
 
--- ⑦ 建物利息（工事営業部用）- 出力月を参照
--- 仕様: 「建物」または「土地」のF列の値の合計
+-- ⑦建物利息（工事営業部用: 建物+土地）
 construction_building_interest AS (
   SELECT
     year_month,
-    SUM(interest) AS building_interest_amount
+    SUM(interest) AS building_interest  -- ⑦
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
@@ -134,124 +141,53 @@ construction_building_interest AS (
   GROUP BY year_month
 ),
 
--- ⑦ 建物利息（硝子建材営業部用）- 出力月を参照
--- 仕様: 「建物」のF列の値のみ
+-- ⑦建物利息（硝子建材営業部用: 建物のみ）
 glass_building_interest AS (
   SELECT
     year_month,
-    interest AS building_interest_amount
+    interest AS building_interest  -- ⑦
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
     AND breakdown = '建物'
 ),
 
--- ⑧ 案分比率（工事部門）- 出力月を参照
-construction_allocation_ratio AS (
-  SELECT
-    year_month,
-    ratio AS allocation_ratio
-  FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
-  WHERE branch = '長崎'
-    AND department = '工事'
-    AND category = '減価償却案分'
-),
-
--- ⑨ 償却資産利息 - 出力月を参照
+-- ⑨償却資産利息
 depreciation_interest AS (
   SELECT
     year_month,
-    interest AS depreciation_interest_amount
+    interest AS depreciation_interest  -- ⑨
   FROM `data-platform-prod-475201.corporate_data.internal_interest`
   WHERE branch = '長崎支店'
     AND category = '社内利息（A）'
     AND breakdown = '償却資産'
 ),
 
--- ⑩ 在庫損益・前受け金（工事営業部用）- スプレッドシート連携
--- 紐付け条件: posting_month = year_month, category = '工事営業部計'
-construction_inventory_profit_loss AS (
-  SELECT
-    posting_month AS year_month,
-    inventory_profit_loss,
-    advance_received
-  FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
-  WHERE category = '工事営業部計'
-),
+-- ============================================================
+-- stocks: 在庫（実行月2か月前参照）
+-- ============================================================
 
--- ⑩ 在庫損益・前受け金（硝子建材営業部用）- スプレッドシート連携
--- 紐付け条件: posting_month = year_month, category = '硝子建材営業部計'
-glass_inventory_profit_loss AS (
-  SELECT
-    posting_month AS year_month,
-    inventory_profit_loss,
-    advance_received
-  FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
-  WHERE category = '硝子建材営業部計'
-),
-
--- 工事営業部の社内利息計算
--- 計算式: (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
-construction_interest AS (
-  SELECT
-    cr.year_month,
-    '長崎支店' AS branch,
-    '工事営業部計' AS detail_category,
-    (
-      (COALESCE(cr.receivables_amount, 0) + COALESCE(cipl.inventory_profit_loss, 0) + COALESCE(cipl.advance_received, 0)) * COALESCE(rr.interest_rate, 0) +
-      COALESCE(cb.bills_amount, 0) * COALESCE(br.interest_rate, 0) +
-      COALESCE(ci.inventory_amount, 0) * COALESCE(ir.interest_rate, 0) +
-      COALESCE(cbi.building_interest_amount, 0) * COALESCE(car.allocation_ratio, 0) +
-      COALESCE(di.depreciation_interest_amount, 0) * COALESCE(car.allocation_ratio, 0)
-    ) AS interest_expense
-  FROM construction_receivables cr
-  LEFT JOIN receivables_rate rr ON cr.year_month = rr.year_month
-  LEFT JOIN construction_bills cb ON cr.year_month = cb.year_month
-  LEFT JOIN bills_rate br ON cr.year_month = br.year_month
-  LEFT JOIN construction_inventory ci ON cr.year_month = ci.year_month
-  LEFT JOIN inventory_rate ir ON cr.year_month = ir.year_month
-  LEFT JOIN construction_building_interest cbi ON cr.year_month = cbi.year_month
-  LEFT JOIN construction_allocation_ratio car ON cr.year_month = car.year_month
-  LEFT JOIN depreciation_interest di ON cr.year_month = di.year_month
-  LEFT JOIN construction_inventory_profit_loss cipl ON cr.year_month = cipl.year_month
-),
-
--- 【硝子建材営業部】の計算
--- ① 売掛金（営業所コード=065 or 066）- 出力月の1ヶ月前を参照
-glass_receivables AS (
+-- ⑤在庫・未成工事（工事部門）
+construction_inventory AS (
   SELECT
     tm.year_month,
-    SUM(bb.current_month_sales_balance) AS receivables_amount
+    COALESCE(SUM(s.amount), 0) AS inventory_amount  -- ⑤
   FROM target_months tm
-  INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
-    ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
-  WHERE bb.branch_code IN (65, 66)
+  LEFT JOIN `data-platform-prod-475201.corporate_data.stocks` s
+    ON s.year_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
+    AND s.branch = '長崎'
+    AND s.department = '工事'
+    AND s.category IN ('期末未成工事', '当月在庫')
   GROUP BY tm.year_month
 ),
 
--- ③ 未落手形（営業所コード=065 or 066）- 出力月の1ヶ月前を参照
-glass_bills AS (
-  SELECT
-    tm.year_month,
-    SUM(bb.unsettled_bill_balance) AS bills_amount
-  FROM target_months tm
-  INNER JOIN `data-platform-prod-475201.corporate_data.billing_balance` bb
-    ON bb.sales_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
-  WHERE bb.branch_code IN (65, 66)
-  GROUP BY tm.year_month
-),
-
--- ⑤ 在庫・未成工事（硝子建材部門）- 出力月の1ヶ月前を参照
+-- ⑤在庫・未成工事（硝子建材部門）
 glass_inventory AS (
   SELECT
     tm.year_month,
-    COALESCE(SUM(DISTINCT s.amount), 0) AS inventory_amount
+    COALESCE(SUM(s.amount), 0) AS inventory_amount  -- ⑤
   FROM target_months tm
-  LEFT JOIN (
-    -- 重複データを除外
-    SELECT DISTINCT year_month, branch, department, category, amount
-    FROM `data-platform-prod-475201.corporate_data.stocks`
-  ) s
+  LEFT JOIN `data-platform-prod-475201.corporate_data.stocks` s
     ON s.year_month = DATE_SUB(tm.year_month, INTERVAL 1 MONTH)
     AND s.branch = '長崎'
     AND s.department = '硝子建材'
@@ -259,44 +195,133 @@ glass_inventory AS (
   GROUP BY tm.year_month
 ),
 
--- ⑧ 案分比率（硝子建材部門）- 出力月を参照
-glass_allocation_ratio AS (
+-- ============================================================
+-- ms_allocation_ratio: 案分比率（source_folder条件付き）
+-- ============================================================
+
+-- ⑧工事部案分比率
+-- 注: 実行月と同じsource_folderを参照（PDF準拠）
+construction_allocation AS (
   SELECT
-    year_month,
-    ratio AS allocation_ratio
-  FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
-  WHERE branch = '長崎'
-    AND department = '硝子建材'
-    AND category = '減価償却案分'
+    tm.year_month,
+    ar.ratio AS allocation_ratio  -- ⑧
+  FROM target_months tm
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ms_allocation_ratio` ar
+    ON ar.year_month = tm.year_month
+    AND ar.branch = '長崎'
+    AND ar.department = '工事'
+    AND ar.category = '減価償却案分'
+    AND ar.source_folder = CAST(FORMAT_DATE('%Y%m', tm.year_month) AS INT64)
 ),
 
--- 硝子建材営業部の社内利息計算
--- 計算式: (①売掛金+⑩在庫損益+前受け金)×②売掛金利率 + ③未落手形×④未落手形利率 + ⑤在庫×⑥在庫利率 + ⑦建物利息×⑧案分比率 + ⑨償却資産利息×⑧案分比率
+-- ⑧硝子建材部案分比率
+-- 注: 実行月と同じsource_folderを参照（PDF準拠）
+glass_allocation AS (
+  SELECT
+    tm.year_month,
+    ar.ratio AS allocation_ratio  -- ⑧
+  FROM target_months tm
+  LEFT JOIN `data-platform-prod-475201.corporate_data.ms_allocation_ratio` ar
+    ON ar.year_month = tm.year_month
+    AND ar.branch = '長崎'
+    AND ar.department = '硝子建材'
+    AND ar.category = '減価償却案分'
+    AND ar.source_folder = CAST(FORMAT_DATE('%Y%m', tm.year_month) AS INT64)
+),
+
+-- ============================================================
+-- スプレッドシート連携: 在庫損益・前受け金
+-- ============================================================
+
+-- ⑩在庫損益・前受け金（工事営業部用）
+construction_inventory_profit_loss AS (
+  SELECT
+    posting_month AS year_month,
+    COALESCE(inventory_profit_loss, 0) AS inventory_profit_loss,
+    COALESCE(advance_received, 0) AS advance_received
+  FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
+  WHERE category = '工事営業部計'
+),
+
+-- ⑩在庫損益・前受け金（硝子建材営業部用）
+glass_inventory_profit_loss AS (
+  SELECT
+    posting_month AS year_month,
+    COALESCE(inventory_profit_loss, 0) AS inventory_profit_loss,
+    COALESCE(advance_received, 0) AS advance_received
+  FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
+  WHERE category = '硝子建材営業部計'
+),
+
+-- ============================================================
+-- 工事営業部の計算: (①+⑩在庫損益+前受け金)×②＋③×④＋⑤×⑥＋⑦×⑧＋⑨×⑧
+-- ============================================================
+construction_interest AS (
+  SELECT
+    tm.year_month,
+    '長崎支店' AS branch,
+    '工事営業部計' AS detail_category,
+    (
+      -- (①売掛金+⑩在庫損益+前受け金)×②売掛金利率
+      (COALESCE(bc.receivables_amount, 0) + COALESCE(cipl.inventory_profit_loss, 0) + COALESCE(cipl.advance_received, 0))
+        * COALESCE(rr.interest_rate, 0)
+      -- ③×④ 未落手形利息
+      + COALESCE(bc.bills_amount, 0) * COALESCE(br.interest_rate, 0)
+      -- ⑤×⑥ 在庫利息
+      + COALESCE(ci.inventory_amount, 0) * COALESCE(ir.interest_rate, 0)
+      -- ⑦×⑧ 建物利息
+      + COALESCE(cbi.building_interest, 0) * COALESCE(ca.allocation_ratio, 0)
+      -- ⑨×⑧ 償却資産利息
+      + COALESCE(di.depreciation_interest, 0) * COALESCE(ca.allocation_ratio, 0)
+    ) AS interest_expense
+  FROM target_months tm
+  LEFT JOIN billing_construction bc ON tm.year_month = bc.year_month
+  LEFT JOIN receivables_rate rr ON tm.year_month = rr.year_month
+  LEFT JOIN bills_rate br ON tm.year_month = br.year_month
+  LEFT JOIN construction_inventory ci ON tm.year_month = ci.year_month
+  LEFT JOIN inventory_rate ir ON tm.year_month = ir.year_month
+  LEFT JOIN construction_building_interest cbi ON tm.year_month = cbi.year_month
+  LEFT JOIN construction_allocation ca ON tm.year_month = ca.year_month
+  LEFT JOIN depreciation_interest di ON tm.year_month = di.year_month
+  LEFT JOIN construction_inventory_profit_loss cipl ON tm.year_month = cipl.year_month
+),
+
+-- ============================================================
+-- 硝子建材営業部の計算: (①+⑩在庫損益+前受け金)×②＋③×④＋⑤×⑥＋⑦×⑧＋⑨×⑧
+-- ============================================================
 glass_interest AS (
   SELECT
-    gr.year_month,
+    tm.year_month,
     '長崎支店' AS branch,
     '硝子建材営業部計' AS detail_category,
     (
-      (COALESCE(gr.receivables_amount, 0) + COALESCE(gipl.inventory_profit_loss, 0) + COALESCE(gipl.advance_received, 0)) * COALESCE(rr.interest_rate, 0) +
-      COALESCE(gb.bills_amount, 0) * COALESCE(br.interest_rate, 0) +
-      COALESCE(gi.inventory_amount, 0) * COALESCE(ir.interest_rate, 0) +
-      COALESCE(gbi.building_interest_amount, 0) * COALESCE(gar.allocation_ratio, 0) +
-      COALESCE(di.depreciation_interest_amount, 0) * COALESCE(gar.allocation_ratio, 0)
+      -- (①売掛金+⑩在庫損益+前受け金)×②売掛金利率
+      (COALESCE(bg.receivables_amount, 0) + COALESCE(gipl.inventory_profit_loss, 0) + COALESCE(gipl.advance_received, 0))
+        * COALESCE(rr.interest_rate, 0)
+      -- ③×④ 未落手形利息
+      + COALESCE(bg.bills_amount, 0) * COALESCE(br.interest_rate, 0)
+      -- ⑤×⑥ 在庫利息
+      + COALESCE(gi.inventory_amount, 0) * COALESCE(ir.interest_rate, 0)
+      -- ⑦×⑧ 建物利息
+      + COALESCE(gbi.building_interest, 0) * COALESCE(ga.allocation_ratio, 0)
+      -- ⑨×⑧ 償却資産利息
+      + COALESCE(di.depreciation_interest, 0) * COALESCE(ga.allocation_ratio, 0)
     ) AS interest_expense
-  FROM glass_receivables gr
-  LEFT JOIN receivables_rate rr ON gr.year_month = rr.year_month
-  LEFT JOIN glass_bills gb ON gr.year_month = gb.year_month
-  LEFT JOIN bills_rate br ON gr.year_month = br.year_month
-  LEFT JOIN glass_inventory gi ON gr.year_month = gi.year_month
-  LEFT JOIN inventory_rate ir ON gr.year_month = ir.year_month
-  LEFT JOIN glass_building_interest gbi ON gr.year_month = gbi.year_month
-  LEFT JOIN glass_allocation_ratio gar ON gr.year_month = gar.year_month
-  LEFT JOIN depreciation_interest di ON gr.year_month = di.year_month
-  LEFT JOIN glass_inventory_profit_loss gipl ON gr.year_month = gipl.year_month
+  FROM target_months tm
+  LEFT JOIN billing_glass bg ON tm.year_month = bg.year_month
+  LEFT JOIN receivables_rate rr ON tm.year_month = rr.year_month
+  LEFT JOIN bills_rate br ON tm.year_month = br.year_month
+  LEFT JOIN glass_inventory gi ON tm.year_month = gi.year_month
+  LEFT JOIN inventory_rate ir ON tm.year_month = ir.year_month
+  LEFT JOIN glass_building_interest gbi ON tm.year_month = gbi.year_month
+  LEFT JOIN glass_allocation ga ON tm.year_month = ga.year_month
+  LEFT JOIN depreciation_interest di ON tm.year_month = di.year_month
+  LEFT JOIN glass_inventory_profit_loss gipl ON tm.year_month = gipl.year_month
 )
 
+-- ============================================================
 -- 統合
+-- ============================================================
 SELECT year_month, branch, detail_category, interest_expense FROM construction_interest
 UNION ALL
 SELECT year_month, branch, detail_category, interest_expense FROM glass_interest
