@@ -330,26 +330,45 @@ bash sql/scripts/update_datamart.sh
 Cloud Workflows
     ├── Step 1: drive-to-gcs
     │    - 1-1: 整合性確認
-    │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート
-    │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート
+    │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート (to workflows)
+    │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート (to workflows)
     ├── Step 2: 待機 (2分)
     ├── Step 3: spreadsheet-to-bq
     │    - 3-1: 整合性確認
-    │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート
-    │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート
+    │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート (to workflows + to logging)
+    │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート (to workflows)
     ├── Step 4: 待機 (2分)
     ├── Step 5: gcs-to-bq
     │    - 5-1: 整合性確認
-    │      - カラムの不整合が起きている場合に、起きているテーブルと不整合が起きているカラムをアラート
-    │      - 何らかの原因でBigqueryへの取り込みエラーがあった場合、そのテーブル名をアラート
+    │      - カラムの不整合が起きている場合に、起きているテーブルと不整合が起きているカラムをアラート (to workflows + to logging)
+    │      - 何らかの原因でBigqueryへの取り込みエラーがあった場合、そのテーブル名をアラート (to workflows)
     ├── Step 6: 待機 (3分)
     ├── Step 7: dwh-datamart-update (Job実行・完了待ち)
-    │    - corporate_data配下のテーブルをcorporate_data_bkにコピー
-    │    - コピーしたテーブルと今回取り込んだあとのcorporate_dataの件数を比較し、テーブルごとの件数をloggingに出力
+    │    - corporate_data配下のテーブルをcorporate_data_bkにコピー (to logging)
+    │    - コピーしたテーブルと今回取り込んだあとのcorporate_dataの件数を比較し、テーブルごとの件数をloggingに出力 (to logging)
     │    - 7-1: 整合性確認
-    │      - main_category='その他'に値が入っている場合alert
-    │      - corporate_data配下各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し、発生していたらアラート
-    └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に)
+    │      - main_category='その他'に値が入っている場合alert (to logging)
+    │      - corporate_data配下各テーブルで定義されたユニークキーを用いて重複が発生していないか確認し、発生していたらアラート (to logging)
+    └── Step 8: 完了通知 (y.tanaka@tanacho.com宛に) ※未実装
+```
+
+### 出力先の説明
+
+| 出力先 | 確認方法 | 説明 |
+|-------|---------|------|
+| to workflows | GCPコンソール > Cloud Workflows > 実行履歴 > 実行ID選択 | HTTPレスポンスに含まれる`errors`/`failed`。各ステップの結果として確認可能 |
+| to logging | GCPコンソール > ロギング > ログエクスプローラ | `validation_logger`経由で出力。構造化ログとして検索・フィルタリング可能 |
+
+### Logging フィルタ例
+
+```
+# Workflowのログ
+resource.type="workflows.googleapis.com/Workflow"
+resource.labels.workflow_id="data-pipeline"
+
+# 各サービスのバリデーションログ
+jsonPayload.validation_type="column_and_row_check"
+jsonPayload.status="ERROR"
 ```
 
 ### Cloud Runサービス一覧

@@ -3,15 +3,15 @@
 # Cloud Workflows デプロイスクリプト
 # ============================================================
 # 使用方法:
-#   bash workflows/deploy_workflow.sh
+#   bash scripts/deploy/deploy_workflow.sh
+#
+# 概要:
+#   data-pipeline ワークフローをデプロイ
+#   Drive→GCS→BigQuery のパイプライン全体を制御
 #
 # ワークフロー実行方法:
 #   # replaceモード（全データ洗い替え）
 #   gcloud workflows run data-pipeline --location=asia-northeast1
-#
-#   # replaceモード（明示的に指定）
-#   gcloud workflows run data-pipeline --location=asia-northeast1 \
-#     --data='{"mode": "replace"}'
 #
 #   # appendモード（指定月のみ追加）
 #   gcloud workflows run data-pipeline --location=asia-northeast1 \
@@ -24,7 +24,11 @@ PROJECT_ID="data-platform-prod-475201"
 REGION="asia-northeast1"
 WORKFLOW_NAME="data-pipeline"
 SERVICE_ACCOUNT="sa-data-platform@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# スクリプトのディレクトリを基準にプロジェクトルートを取得
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WORKFLOW_SOURCE="${PROJECT_ROOT}/workflows/data_pipeline.yaml"
 
 echo "============================================================"
 echo "Cloud Workflows デプロイ"
@@ -33,7 +37,14 @@ echo "Project: ${PROJECT_ID}"
 echo "Region: ${REGION}"
 echo "Workflow: ${WORKFLOW_NAME}"
 echo "Service Account: ${SERVICE_ACCOUNT}"
+echo "Source: ${WORKFLOW_SOURCE}"
 echo "============================================================"
+
+# ワークフローファイルの存在確認
+if [ ! -f "${WORKFLOW_SOURCE}" ]; then
+  echo "[ERROR] ワークフローファイルが見つかりません: ${WORKFLOW_SOURCE}"
+  exit 1
+fi
 
 # Workflows APIの有効化（まだの場合）
 echo ""
@@ -73,7 +84,7 @@ echo "[Step 3] ワークフローのデプロイ..."
 gcloud workflows deploy "${WORKFLOW_NAME}" \
   --project="${PROJECT_ID}" \
   --location="${REGION}" \
-  --source="${SCRIPT_DIR}/data_pipeline.yaml" \
+  --source="${WORKFLOW_SOURCE}" \
   --service-account="${SERVICE_ACCOUNT}"
 
 echo ""
@@ -92,9 +103,5 @@ echo "    --data='{\"mode\": \"append\", \"target_month\": \"202511\"}'"
 echo ""
 echo "  # 実行状況の確認"
 echo "  gcloud workflows executions list ${WORKFLOW_NAME} --location=${REGION}"
-echo ""
-echo "  # 特定の実行の詳細"
-echo "  gcloud workflows executions describe <EXECUTION_ID> \\"
-echo "    --workflow=${WORKFLOW_NAME} --location=${REGION}"
 echo ""
 echo "============================================================"
