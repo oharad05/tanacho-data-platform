@@ -147,7 +147,7 @@ PROJECT_ID = os.environ.get("GCP_PROJECT", "data-platform-prod-475201")
 DATASET_ID = "corporate_data"
 LANDING_BUCKET = os.environ.get("LANDING_BUCKET", "data-platform-landing-prod")
 COLUMNS_PATH = "google-drive/config/columns"
-MAPPING_FILE = "google-drive/config/mapping/excel_mapping.csv"
+MAPPING_FILE = "google-drive/config/mapping/mapping_files.csv"
 MONETARY_SCALE_FILE = "google-drive/config/mapping/monetary_scale_conversion.csv"
 ZERO_DATE_FILE = "google-drive/config/mapping/zero_date_to_null.csv"
 
@@ -1098,6 +1098,24 @@ def load_csv_to_bigquery(
         return True
 
     except GoogleCloudError as e:
+        # ファイルが存在しない場合はスキップ（エラーではなく警告）
+        error_str = str(e)
+        if "Not found" in error_str or "notFound" in error_str:
+            print(f"   ⚠️  ファイルが存在しないためスキップ: {gcs_uri}")
+            log_pipeline_event(
+                action="load_table",
+                status="SKIPPED",
+                message=f"テーブル {table_name} のファイルが存在しないためスキップ",
+                table_name=table_name,
+                details={
+                    "yyyymm": yyyymm,
+                    "reason": "FILE_NOT_FOUND",
+                    "gcs_uri": gcs_uri
+                },
+                execution_id=exec_id
+            )
+            return None  # スキップを示す
+
         print(f"   ❌ ロードエラー: {e}")
         if hasattr(e, 'errors') and e.errors:
             for error in e.errors:
@@ -1887,7 +1905,8 @@ def load_endpoint():
                 # 全年月のCSVをロード
                 table_success = True
                 for month in target_months:
-                    if not load_csv_to_bigquery(bq_client, table_name, month, exec_id):
+                    result = load_csv_to_bigquery(bq_client, table_name, month, exec_id)
+                    if result is False:  # None（スキップ）は成功として扱う
                         table_success = False
 
                 if table_success:

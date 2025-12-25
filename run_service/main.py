@@ -1,4 +1,4 @@
-import os, io, json, datetime as dt, pandas as pd, requests, re, traceback
+import os, io, json, datetime as dt, pandas as pd, re, traceback
 from flask import Flask, request, jsonify  # ← jsonify を追加
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -11,7 +11,6 @@ PROJECT_ID         = os.environ.get("GCP_PROJECT")
 DRIVE_FOLDER_ID    = os.environ["DRIVE_FOLDER_ID"]          # 親フォルダ fileId もしくは 共有ドライブ driveId
 LANDING_BUCKET     = os.environ["LANDING_BUCKET"]           # GCSバケット名
 MAPPING_GCS_PATH   = os.environ.get("MAPPING_GCS_PATH", "google-drive/config/mapping_files.csv")
-CLOUD_RUN_ENDPOINT = os.environ.get("CLOUD_RUN_ENDPOINT")   # 任意: 下流通知
 SERVICE_JSON       = os.environ.get("SERVICE_JSON_PATH")    # 任意: 鍵ファイルパス（ローカル）
 SERVICE_JSON_GCS   = os.environ.get("SERVICE_JSON_GCS_PATH") # 任意: 鍵ファイルパス（GCS）
 IMPERSONATE_USER   = os.environ.get("IMPERSONATE_USER")     # ドメイン全体の委任: なりすますユーザー
@@ -263,17 +262,6 @@ def _gcs_upload_raw(bucket, bytes_io: io.BytesIO, yyyymm: str, slug: str, out_na
     blob.upload_from_file(bytes_io)
     return f"gs://{LANDING_BUCKET}/{path}"
 
-def _post_to_run(payload: dict):
-    if not CLOUD_RUN_ENDPOINT:
-        print("[INFO] CLOUD_RUN_ENDPOINT not set. Skip downstream POST.")
-        return 0, "skipped"
-    try:
-        r = requests.post(CLOUD_RUN_ENDPOINT, json=payload, timeout=60)
-        return r.status_code, r.text[:500]
-    except Exception as e:
-        print(f"[WARN] POST to {CLOUD_RUN_ENDPOINT} failed: {e}")
-        return -1, str(e)[:500]
-
 # ============== 同期処理 ==============
 def _process_month_folder(drive, bucket, df_map, month_folder: dict) -> dict:
     """
@@ -308,12 +296,7 @@ def _process_month_folder(drive, bucket, df_map, month_folder: dict) -> dict:
 
             gcs_uri = _gcs_upload_raw(bucket, filebytes, yyyymm, slug, out_name, ctype)
 
-            body = {"yyyymm": yyyymm, "slug": slug, "gcs_uri": gcs_uri, "original": name}
-            if sheet_name:
-                body["sheet_name"] = sheet_name
-            status, _ = _post_to_run(body)
-
-            print(f"[OK] saved {gcs_uri} from {name} post_status={status}")
+            print(f"[OK] saved {gcs_uri} from {name}")
             result["processed"] += 1
             result["success"].append({"file": name, "gcs_uri": gcs_uri})
         except Exception as e:

@@ -66,7 +66,10 @@ tables:
     unique_keys:
       - sales_accounting_period
       - branch_code
+      - department_code
       - staff_code
+      - major_department_code
+      - division_code
     type: monthly
 
   customer_sales_target_and_achievements:
@@ -80,16 +83,14 @@ tables:
     unique_keys:
       - slip_date
       - classification_type
-      - account_title
-      - slip_number
+      - slip_no
     type: monthly
 
   ledger_loss:
     unique_keys:
       - accounting_month
       - classification_type
-      - account_title
-      - slip_number
+      - slip_no
     type: monthly
 
   department_summary:
@@ -102,7 +103,8 @@ tables:
     unique_keys:
       - year_month
       - branch
-      - interest_type
+      - category
+      - breakdown
     type: monthly
 
   # スプレッドシート連携テーブル（パーティションなし、全データ洗い替え）
