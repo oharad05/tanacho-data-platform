@@ -65,19 +65,17 @@ cumulative_recurring_profit AS (
     -- 目標も累積
     (SELECT SUM(recurring_profit_target)
      FROM aggregated_metrics am_inner
-     CROSS JOIN fiscal_year_starts fys_inner
+     JOIN fiscal_year_starts fys_inner ON fys_inner.year_month = am_target.year_month
      WHERE am_inner.detail_category = am_target.detail_category
      AND am_inner.year_month >= fys_inner.fiscal_start_date
-     AND am_inner.year_month <= am_target.year_month
-     AND fys_inner.year_month = am_target.year_month) AS cumulative_target
+     AND am_inner.year_month <= am_target.year_month) AS cumulative_target
   FROM aggregated_metrics am_target
-  CROSS JOIN fiscal_year_starts fys
+  JOIN fiscal_year_starts fys ON fys.year_month = am_target.year_month
   LEFT JOIN aggregated_metrics am_source
     ON am_target.detail_category = am_source.detail_category
     AND am_source.year_month >= fys.fiscal_start_date
     AND am_source.year_month <= am_target.year_month
-  WHERE fys.year_month = am_target.year_month
-    AND am_target.recurring_profit_actual IS NOT NULL
+  WHERE am_target.recurring_profit_actual IS NOT NULL
   GROUP BY am_target.year_month, am_target.detail_category
 ),
 -- ============================================================

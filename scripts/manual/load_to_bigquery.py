@@ -74,15 +74,15 @@ CUMULATIVE_TABLE_CONFIG = {
         "unique_keys": ["sales_month", "branch_code", "branch_name"],
     },
     "profit_plan_term": {
-        # ソース: 12_損益5期目標.xlsx（東京支店目標103期シート）
+        # ソース: 12_損益目標.xlsx（東京支店目標103期シート）
         "unique_keys": ["period", "item"],
     },
     "profit_plan_term_nagasaki": {
-        # ソース: 12_損益5期目標.xlsx（長崎支店目標103期シート）
+        # ソース: 12_損益目標.xlsx（長崎支店目標103期シート）
         "unique_keys": ["period", "item"],
     },
     "profit_plan_term_fukuoka": {
-        # ソース: 12_損益5期目標.xlsx（福岡支店目標103期シート）
+        # ソース: 12_損益目標.xlsx（福岡支店目標103期シート）
         "unique_keys": ["period", "item"],
     },
     "ms_allocation_ratio": {

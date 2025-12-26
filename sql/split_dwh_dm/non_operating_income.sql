@@ -56,17 +56,17 @@ WITH tokyo_income AS (
       END
     ) AS yamamoto_other,
 
-    -- 硝子建材営業部: 硝子建材営業課(20) or 硝子建材営業部(62) (全角・半角対応)
+    -- 硝子建材営業部: 硝子建材営業課(20)のみ (仕様書に準拠)
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        WHEN own_department_code = 20 AND REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
     ) AS glass_sales_rebate,
     SUM(
       CASE
-        WHEN own_department_code IN (20, 62) AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
+        WHEN own_department_code = 20 AND NOT REGEXP_CONTAINS(description_comment, r'リベート|リベート|ﾘﾍﾞｰﾄ')
         THEN amount
         ELSE 0
       END
@@ -85,10 +85,11 @@ tokyo_unpivoted AS (
 
 nagasaki_department_data AS (
   -- 長崎支店: 部門集計表から取得 (コード8730=雑収入リベート, 8870=雑損失その他)
+  -- construction_department = データソース#6のY列（工事部）を使用
   SELECT
     sales_accounting_period AS year_month,
     code,
-    COALESCE(construction_sales_department, 0) AS construction_dept_amount,
+    COALESCE(construction_department, 0) AS construction_dept_amount,
     COALESCE(glass_building_material_sales_department, 0) AS glass_dept_amount,
     COALESCE(operations_department, 0) AS operations_dept_amount
   FROM `data-platform-prod-475201.corporate_data.department_summary`
@@ -111,6 +112,7 @@ nagasaki_direct_income AS (
 
 nagasaki_allocation_ratios AS (
   -- 案分比率の取得 (業務部門案分)
+  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
   SELECT
     year_month,
     department,
@@ -118,6 +120,7 @@ nagasaki_allocation_ratios AS (
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
     AND category = '業務部門案分'
+    AND source_folder = CAST(FORMAT_DATE('%Y%m', year_month) AS INT64)
 ),
 
 nagasaki_allocated AS (

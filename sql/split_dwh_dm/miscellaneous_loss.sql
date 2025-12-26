@@ -92,6 +92,7 @@ nagasaki_direct_loss AS (
 
 nagasaki_allocation_ratios AS (
   -- 案分比率の取得（業務部門案分のみ）
+  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
   SELECT
     year_month,
     department,
@@ -99,6 +100,7 @@ nagasaki_allocation_ratios AS (
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
     AND category = '業務部門案分'
+    AND source_folder = CAST(FORMAT_DATE('%Y%m', year_month) AS INT64)
 ),
 
 nagasaki_allocated AS (
@@ -158,6 +160,7 @@ fukuoka_direct_loss AS (
 
 fukuoka_allocation_ratios AS (
   -- 案分比率の取得(業務部門案分のみ)、硝子樹脂は合算
+  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
   SELECT
     year_month,
     CASE
@@ -168,6 +171,7 @@ fukuoka_allocation_ratios AS (
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '福岡'
     AND category = '業務部門案分'
+    AND source_folder = CAST(FORMAT_DATE('%Y%m', year_month) AS INT64)
   GROUP BY year_month,
     CASE
       WHEN department IN ('硝子建材', '樹脂建材') THEN '硝子樹脂'

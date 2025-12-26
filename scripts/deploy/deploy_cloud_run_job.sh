@@ -51,7 +51,7 @@ gcloud run jobs deploy "${JOB_NAME}" \
   --set-env-vars "VALIDATION_ENABLED=true" \
   --memory=2Gi \
   --cpu=2 \
-  --task-timeout=1800 \
+  --task-timeout=3600 \
   --max-retries=0
 
 echo ""

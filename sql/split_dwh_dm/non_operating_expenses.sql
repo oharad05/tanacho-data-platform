@@ -40,6 +40,7 @@ yamamoto_interest AS (
     ON DATE_ADD(bb.sales_month, INTERVAL 1 MONTH) = ii.year_month  -- bb月+1ヶ月 = ii月
   WHERE
     bb.branch_code = 13  -- 改修課
+    AND bb.source_folder = CAST(FORMAT_DATE('%Y%m', bb.sales_month) AS INT64)  -- 累積型テーブル対応
     AND ii.branch = '東京支店'
     AND ii.category = '社内利息（A）'
     AND ii.breakdown = '売掛金'

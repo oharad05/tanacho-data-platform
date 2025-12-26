@@ -118,6 +118,7 @@ nagasaki_direct_expenses AS (
 
 nagasaki_allocation_ratios AS (
   -- 案分比率の取得（業務部門案分のみ）
+  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
   SELECT
     year_month,
     department,
@@ -125,6 +126,7 @@ nagasaki_allocation_ratios AS (
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '長崎'
     AND category = '業務部門案分'
+    AND source_folder = CAST(FORMAT_DATE('%Y%m', year_month) AS INT64)
 ),
 
 nagasaki_allocated AS (
@@ -240,6 +242,7 @@ fukuoka_direct_expenses AS (
 fukuoka_allocation_ratios AS (
   -- 案分比率の取得(業務部門案分のみ)
   -- 硝子建材と樹脂建材は別々に取得（合算しない）
+  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
   SELECT
     year_month,
     department,
@@ -247,6 +250,7 @@ fukuoka_allocation_ratios AS (
   FROM `data-platform-prod-475201.corporate_data.ms_allocation_ratio`
   WHERE branch = '福岡'
     AND category = '業務部門案分'
+    AND source_folder = CAST(FORMAT_DATE('%Y%m', year_month) AS INT64)
 ),
 
 fukuoka_allocated AS (
