@@ -2,9 +2,23 @@
 実装の方向性に迷ったり､仕様が不明な場合は､実装を止めて質問して下さい｡
 
 # データの整合性の確認方法
-sql/tmp_file/に正解データのpdfがあります｡
-正解データのpdfと計算結果が一致しているか検証をします｡
-検証する項目の粒度は､「main_category×secondary_category×secondary_department」です｡pdfに値が載っているもののみ検証してください｡
+sql/tmp_file/配下に
+・スプレッドシートでの出力結果(SSでの可視化 - PL(月単位)_{yyyymm}.csvの形式)
+・pdfからcsv化したデータ(BI テスト - pdf_東京_{yyyymm}.csvの形式)
+後者が正解データであり､一致するか検証する必要があります｡
+
+ 1.pdfのデータ: sql/tmp_file/BI テスト -
+  pdf_東京_{yyyymm}.csvの区分（大）とスプレッドシートでの出力結果(SSでの可視化 -
+  PL(月単位)_{yyyymm}.csvの形式)のmain_category\
+  2.pdfのデータ: sql/tmp_file/BI テスト -
+  pdf_東京_{yyyymm}.csvの区分（小）とスプレッドシートでの出力結果(SSでの可視化 -
+  PL(月単位)_{yyyymm}.csvの形式)のsecondary_category\\
+  3.pdfのデータ: sql/tmp_file/BI テスト -
+  pdf_東京_{yyyymm}.csvの3行目以降のヘッダー名とスプレッドシートでの出力結果(SSでの可視化 -
+  PL(月単位)_{yyyymm}.csvの形式)の3列目の「◯◯支店計」より右側のヘッダー名\
+  4.比較対象の支店・yyyymmが一致している
+  この4つの条件が合致する値同士を比較します｡
+  表記揺れなど(大文字カッコと小文字カッコなど)が起きている場合もあるので､比較に迷った場合は質問してください｡
 
 ## 1.データ比較
 ### 手順1-1.csv_from_pdfpdfとcsvの比較
@@ -42,7 +56,7 @@ invest_result(一旦nullで定義)
 
 ### 手順1-3.調査結果・提案の入力及びファイル出力
 invest_resultに､調査した結果をテキストで入力してください｡
-その後､今回の処理で生成したファイルを結合し､docs/test/test_output_{実行日のyyyymmdd}_all.csvという形式で保存してください｡
+その後､今回の処理で生成したファイルを結合し､docs/test/test_output_{実行日のyyyymmddhh}_all.csvという形式で保存してください｡
 
 ### 手順1-4.比較結果の報告
 手順1-2の出力のうち､is_equal=0の項目を表示してください｡
@@ -86,35 +100,28 @@ driveとスプレッドシートから､Bigqueryのcorporate_dataのデータ�
 
 ##### 5. テーブルタイプ別ロード処理
 
-テーブルは「単月型」と「累積型」の2種類があり、ロード処理が異なる。
+**全テーブルは単月型として処理されます。**
 
-**単月型テーブル**: 各CSVがその月のデータのみ含む → 全CSVをそのままロード
+gcs-to-bqサービスでは、全テーブルを単月型として扱い、各月のCSVをそのままBigQueryにロードします。
 
-**累積型テーブル**: 各CSVが全期間のデータを含む → 全CSVを結合してキー毎に最新フォルダ（max(source_folder)）を優先
+##### 6. source_folderカラムの追加
 
-| ソースファイル名 | テーブル名 | タイプ | ユニークキー |
-|-----------------|-----------|--------|-------------|
-| 3_請求残高一覧表（月間）.xlsx | billing_balance | 累積型 | sales_month, branch_code, branch_name |
-| 12_損益5期目標.xlsx（東京支店目標103期） | profit_plan_term | 累積型 | period, item |
-| 12_損益5期目標.xlsx（長崎支店目標103期） | profit_plan_term_nagasaki | 累積型 | period, item |
-| 12_損益5期目標.xlsx（福岡支店目標103期） | profit_plan_term_fukuoka | 累積型 | period, item |
-| 10_案分比率マスタ.xlsx | ms_allocation_ratio | 累積型 | year_month, branch, department, category |
-| 1_全支店[1.売上管理] 担当者売上目標／実績データ.xlsx | sales_target_and_achievements | 単月型 | - |
-| 4_元帳_雑収入.xlsx | ledger_income | 単月型 | - |
-| 6_部門集計表_YYYYMM.xlsx | department_summary | 単月型 | - |
-| 7_社内金利計算表.xlsx | internal_interest | 単月型 | - |
-| 9_在庫.xlsx | stocks | 単月型 | - |
-| 16_元帳_雑損失.xlsx | ledger_loss | 単月型 | - |
-| 工事進捗日数金額.xlsx | construction_progress_days_amount | 累積型 | property_period, branch_code, staff_code, property_number, customer_code, contract_date |
-| 工事進捗日数最終日.xlsx | construction_progress_days_final_date | 累積型（※未対応） | final_billing_sales_date, property_number, property_data_classification |
+以下のテーブルは、raw-to-proceedサービスでCSV変換時に `source_folder` カラム（INTEGER型、例: 202511）が追加されます。
+これにより、どのフォルダからデータを取得したかを追跡できます。
 
-累積型テーブルには `source_folder` カラム（INTEGER型、例: 202511）が追加され、どのフォルダからロードされたかを追跡可能
+| テーブル名 | source_folder追加 |
+|-----------|------------------|
+| billing_balance | ✅ |
+| profit_plan_term | ✅ |
+| profit_plan_term_nagasaki | ✅ |
+| profit_plan_term_fukuoka | ✅ |
+| ms_allocation_ratio | ✅ |
+| construction_progress_days_amount | ✅ |
+| construction_progress_days_final_date | ✅ |
+| stocks | ✅ |
+| その他のテーブル | ❌ |
 
-**※注意: 重複データを含むテーブル**
-以下のテーブルは累積型だが、現在の`load_to_bigquery.py`では重複排除処理が未実装のため、重複データを含む状態でロードされる：
-- `construction_progress_days_final_date`: 約2.5倍の重複（51,424行 / ユニークキー20,732件）
-
-このテーブルを使用する際は、クエリ側でDISTINCTまたはユニークキーによる重複排除が必要。
+※ source_folderが追加されるテーブルは `raw_to_proceed_service/main.py` の `CUMULATIVE_TABLES` で定義されています。
 #### 1-2.指定年月のみ洗いがえ
 パラメータとしてyyyymm(ex.202509)を渡し､driveは該当のyyyymmのみ更新する｡スプレッドシートは1-1と同様に実装する
 
@@ -334,7 +341,7 @@ Cloud Workflows
     │      - 取り込み件数が0件のテーブルがあった場合、そのファイル名をアラート (to workflows)
     │      - 何らかの原因で取り込みエラーがあった場合、そのファイル名をアラート (to workflows)
     ├── Step 2: 待機 (2分)
-    ├── Step 3: spreadsheet-to-gcs
+    ├── Step 3: spreadsheet-to-bq
     │    - 3-1: 整合性確認
     │      - 取り込み件数が0件のシートがあった場合、そのシート名をアラート (to workflows + to logging)
     │      - 何らかの原因で取り込みエラーがあった場合、そのシート名をアラート (to workflows)
@@ -377,7 +384,7 @@ jsonPayload.status="ERROR"
 | サービス名 | URL | 説明 |
 |-----------|-----|------|
 | drive-to-gcs | https://drive-to-gcs-102847004309.asia-northeast1.run.app | Google Drive → GCS |
-| spreadsheet-to-gcs | https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app | スプレッドシート → GCS |
+| spreadsheet-to-bq | https://spreadsheet-to-bq-102847004309.asia-northeast1.run.app | スプレッドシート → GCS |
 | gcs-to-bq | https://gcs-to-bq-102847004309.asia-northeast1.run.app | GCS → BigQuery |
 | dwh-datamart-update | Cloud Run Job | DWH/DataMart更新 |
 
@@ -403,3 +410,35 @@ jsonPayload.status="ERROR"
 
 - いずれかのステップでエラーが発生した場合、ワークフロー全体を停止
 - エラー内容は Cloud Logging に出力
+
+---
+
+## GCS設定ファイル構成
+
+GCS上の3つのconfigフォルダとローカルディレクトリの対応関係:
+
+| GCSパス | ローカル対応 | 使用サービス |
+|---------|-------------|-------------|
+| `config/` | `common/table_unique_keys.yml` | dwh_datamart_job |
+| `google-drive/config/` | `config/columns/`, `config/mapping/` | raw_to_proceed_service, gcs_to_bq_service, run_service |
+| `spreadsheet/config/` | `spreadsheet_service/config/` | gcs_to_bq_service |
+
+### 設定ファイルのアップロード
+
+```bash
+# 設定ファイルのみアップロード
+bash scripts/deploy/upload_config_to_gcs.sh
+
+# または deploy_all.sh で自動アップロード
+bash scripts/deploy/deploy_all.sh
+```
+
+### アップロード対象詳細
+
+| ローカルパス | GCS先 | 説明 |
+|-------------|-------|------|
+| `config/columns/*.csv` | `google-drive/config/columns/` | カラム定義（日英マッピング） |
+| `config/mapping/*.csv` | `google-drive/config/mapping/` | 金額変換設定、ファイルマッピング等 |
+| `common/table_unique_keys.yml` | `config/table_unique_keys.yml` | ユニークキー定義 |
+| `spreadsheet_service/config/columns/*.csv` | `spreadsheet/config/columns/` | スプレッドシート用カラム定義 |
+| `spreadsheet_service/config/mapping/*.csv` | `spreadsheet/config/mapping/` | スプレッドシート用マッピング |

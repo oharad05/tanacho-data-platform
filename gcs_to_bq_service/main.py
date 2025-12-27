@@ -177,6 +177,14 @@ TABLE_CONFIG = {
         "partition_field": "period",
         "clustering_fields": ["item"]
     },
+    "profit_plan_term_nagasaki": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
+    "profit_plan_term_fukuoka": {
+        "partition_field": "period",
+        "clustering_fields": ["item"]
+    },
     "ledger_loss": {
         "partition_field": "slip_date",
         "clustering_fields": ["classification_type"]
@@ -192,44 +200,32 @@ TABLE_CONFIG = {
     "construction_progress_days_final_date": {
         "partition_field": "final_billing_sales_date",
         "clustering_fields": ["property_number"]
+    },
+    "stocks": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
+    },
+    "ms_allocation_ratio": {
+        "partition_field": "year_month",
+        "clustering_fields": ["branch"]
     }
 }
 
 # ============================================================
 # 累積型テーブルの定義
 # ============================================================
-# 各CSVが全期間のデータを含むテーブル
-# キー毎に最新フォルダ（max(source_folder)）のデータを優先してロード
-CUMULATIVE_TABLE_CONFIG = {
-    "profit_plan_term": {
-        # ソース: 12_損益目標.xlsx（東京支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "profit_plan_term_nagasaki": {
-        # ソース: 12_損益目標.xlsx（長崎支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "profit_plan_term_fukuoka": {
-        # ソース: 12_損益目標.xlsx（福岡支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "ms_allocation_ratio": {
-        # ソース: 10_案分比率マスタ.xlsx
-        "unique_keys": ["year_month", "branch", "department", "category"],
-    },
-    "construction_progress_days_amount": {
-        # ソース: 工事進捗日数金額.xlsx
-        "unique_keys": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
-    },
-    "stocks": {
-        # ソース: 9_在庫.xlsx
-        "unique_keys": ["year_month", "branch", "department", "category"],
-    },
-    "construction_progress_days_final_date": {
-        # ソース: 工事進捗日数最終日.xlsx
-        "unique_keys": ["final_billing_sales_date", "property_number", "property_data_classification"],
-    },
-}
+# 2025-12-27: 全テーブルを単月型として扱うように変更
+# 理由: 累積型処理により過去月のsource_folderが消失し、
+#       SQLのJOIN条件（source_folder = year_month）が成立しなくなる問題を回避
+#
+# 以下のテーブルは単月型として扱う（各月のsource_folderを保持）:
+# - billing_balance
+# - profit_plan_term / profit_plan_term_nagasaki / profit_plan_term_fukuoka
+# - ms_allocation_ratio
+# - construction_progress_days_amount
+# - stocks
+# - construction_progress_days_final_date
+CUMULATIVE_TABLE_CONFIG = {}
 
 # ============================================================
 # スプレッドシート連携テーブルの定義
@@ -270,6 +266,57 @@ SPREADSHEET_UNIQUE_KEYS_CONFIG = {
 # ============================================================
 # バリデーション関数
 # ============================================================
+
+def validate_table_config_completeness(
+    storage_client: storage.Client,
+    target_months: list
+) -> Dict[str, Any]:
+    """
+    GCSのCSVファイル一覧とTABLE_CONFIGの整合性をチェック
+
+    TABLE_CONFIGに含まれていないテーブルがある場合、エラーを返す。
+    これにより、新規テーブル追加時の設定漏れによる重複データを防止する。
+
+    Returns:
+        Dict with keys:
+        - status: "OK" or "ERROR"
+        - missing_tables: TABLE_CONFIGに含まれていないテーブル名のリスト
+        - message: 結果メッセージ
+    """
+    bucket = storage_client.bucket(LANDING_BUCKET)
+
+    # GCSのproceed/配下の全CSVファイルからテーブル名を抽出
+    gcs_tables = set()
+    for month in target_months:
+        prefix = f"google-drive/proceed/{month}/"
+        blobs = bucket.list_blobs(prefix=prefix)
+        for blob in blobs:
+            if blob.name.endswith(".csv"):
+                # google-drive/proceed/202409/sales_target_and_achievements.csv
+                # → sales_target_and_achievements
+                filename = blob.name.split("/")[-1]
+                table_name = filename.replace(".csv", "")
+                gcs_tables.add(table_name)
+
+    # TABLE_CONFIGに含まれていないテーブルを検出
+    missing_tables = gcs_tables - set(TABLE_CONFIG.keys())
+
+    if missing_tables:
+        return {
+            "status": "ERROR",
+            "validation_type": "table_config_completeness",
+            "missing_tables": sorted(list(missing_tables)),
+            "message": f"TABLE_CONFIGに未設定のテーブルがあります: {', '.join(sorted(missing_tables))}。"
+                       f"設定を追加してから再実行してください。"
+        }
+
+    return {
+        "status": "OK",
+        "validation_type": "table_config_completeness",
+        "missing_tables": [],
+        "message": f"全てのGCSテーブル({len(gcs_tables)}件)がTABLE_CONFIGに設定済みです。"
+    }
+
 
 def log_validation_result(result: Dict[str, Any]) -> None:
     """
@@ -1864,6 +1911,36 @@ def load_endpoint():
         else:
             # 省略時は2024/9以降の全年月
             target_months = get_available_months_from_gcs(storage_client)
+
+        # ============================================================
+        # TABLE_CONFIG整合性チェック（設定漏れ防止）
+        # ============================================================
+        config_check = validate_table_config_completeness(storage_client, target_months)
+        if config_check["status"] == "ERROR":
+            print("=" * 60)
+            print("❌ TABLE_CONFIG整合性チェックエラー")
+            print("=" * 60)
+            print(f"未設定のテーブル: {', '.join(config_check['missing_tables'])}")
+            print("")
+            print("対処方法:")
+            print("  1. gcs_to_bq_service/main.py の TABLE_CONFIG に上記テーブルを追加")
+            print("  2. サービスを再デプロイ")
+            print("  3. 再実行")
+            print("=" * 60)
+
+            log_pipeline_event(
+                action="load_config_check",
+                status="ERROR",
+                message=config_check["message"],
+                details={"missing_tables": config_check["missing_tables"]},
+                execution_id=exec_id
+            )
+
+            return jsonify({
+                "status": "error",
+                "error": config_check["message"],
+                "missing_tables": config_check["missing_tables"]
+            }), 400
 
         print("=" * 60)
         print(f"proceed/ → BigQuery ロード処理")

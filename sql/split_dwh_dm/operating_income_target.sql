@@ -36,6 +36,7 @@ WITH tokyo_profit_plan AS (
     sash_finished_products,
     others
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
+  WHERE source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 ),
 
 tokyo_target AS (
@@ -86,6 +87,7 @@ nagasaki_profit_plan AS (
     sash_sales,
     finished_products
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
+  WHERE source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 ),
 
 nagasaki_target AS (
@@ -128,6 +130,7 @@ fukuoka_profit_plan AS (
     gs_center,
     fukuhoku_center
   FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
+  WHERE source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 ),
 
 fukuoka_target AS (

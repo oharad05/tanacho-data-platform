@@ -52,6 +52,7 @@ WITH base_data AS (
     CAST(planned_gross_profit_amount AS FLOAT64) AS planned_gross_profit_amount,
     CAST(planned_gross_profit_rate_display AS FLOAT64) AS planned_gross_profit_rate
   FROM `data-platform-prod-475201.corporate_data.construction_progress_days_amount`
+  WHERE source_folder = CAST(FORMAT_DATE('%Y%m', property_period) AS INT64)
 ),
 
 -- 担当者×契約月別に集計

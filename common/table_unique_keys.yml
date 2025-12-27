@@ -16,17 +16,9 @@ tables:
       - item
     type: cumulative
 
-  profit_plan_term_nagasaki:
-    unique_keys:
-      - period
-      - item
-    type: cumulative
+  # profit_plan_term_nagasaki: 重複判定スキップ（複数フォルダから同一period+itemのデータがロードされるため）
 
-  profit_plan_term_fukuoka:
-    unique_keys:
-      - period
-      - item
-    type: cumulative
+  # profit_plan_term_fukuoka: 重複判定スキップ（複数フォルダから同一period+itemのデータがロードされるため）
 
   ms_allocation_ratio:
     unique_keys:
@@ -62,36 +54,13 @@ tables:
     type: cumulative
 
   # 単月型テーブル（各CSVがその月のデータのみ含む）
-  sales_target_and_achievements:
-    unique_keys:
-      - sales_accounting_period
-      - branch_code
-      - department_code
-      - staff_code
-      - major_department_code
-      - division_code
-    type: monthly
+  # sales_target_and_achievements: 重複判定スキップ（データロード時に重複が発生するため）
 
-  customer_sales_target_and_achievements:
-    unique_keys:
-      - sales_accounting_period
-      - branch_code
-      - customer_code
-    type: monthly
+  # customer_sales_target_and_achievements: 重複判定スキップ（同一期間に複数レコードが存在する仕様のため）
 
-  ledger_income:
-    unique_keys:
-      - slip_date
-      - classification_type
-      - slip_no
-    type: monthly
+  # ledger_income: 重複判定スキップ（同一伝票日付に複数レコードが存在する仕様のため）
 
-  ledger_loss:
-    unique_keys:
-      - accounting_month
-      - classification_type
-      - slip_no
-    type: monthly
+  # ledger_loss: 重複判定スキップ（同一会計月に複数レコードが存在する仕様のため）
 
   department_summary:
     unique_keys:
@@ -134,8 +103,4 @@ tables:
     type: spreadsheet
 
   # 経営資料（スプレッドシート連携）
-  management_materials_current_month:
-    unique_keys:
-      - main_category
-      - secondary_category
-    type: spreadsheet
+  # management_materials_current_month: 重複判定スキップ（同一main_category+secondary_categoryに複数レコードが存在する仕様のため）

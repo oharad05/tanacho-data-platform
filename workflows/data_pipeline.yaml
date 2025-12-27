@@ -4,14 +4,16 @@
 # データパイプライン全体を管理するCloud Workflows定義
 #
 # フロー:
-#   Step 1: drive-to-gcs (Google Drive → GCS)
-#   Step 2: 待機 (2分)
-#   Step 3: spreadsheet-to-gcs (スプレッドシート → GCS)
-#   Step 4: 待機 (2分)
-#   Step 5: gcs-to-bq (GCS → BigQuery)
-#   Step 6: 待機 (3分)
-#   Step 7: dwh-datamart-update (DWH/DataMart更新 - Cloud Run Job)
-#   Step 8: 完了通知 (未実装)
+#   Step 1: drive-to-gcs (Google Drive → GCS raw/)
+#   Step 2: 待機 (1分)
+#   Step 3: raw-to-proceed (GCS raw/ → proceed/ 変換)
+#   Step 4: 待機 (1分)
+#   Step 5: spreadsheet-to-gcs (スプレッドシート → GCS)
+#   Step 6: 待機 (1分)
+#   Step 7: gcs-to-bq (GCS proceed/ → BigQuery)
+#   Step 8: 待機 (1分)
+#   Step 9: dwh-datamart-update (DWH/DataMart更新 - Cloud Run Job)
+#   Step 10: 完了通知 (未実装)
 #
 # 使用方法:
 #   gcloud workflows run data-pipeline \
@@ -34,6 +36,7 @@ main:
           - mode: ${default(map.get(args, "mode"), "replace")}
           - target_month: ${default(map.get(args, "target_month"), "")}
           - drive_to_gcs_url: "https://drive-to-gcs-102847004309.asia-northeast1.run.app"
+          - raw_to_proceed_url: "https://raw-to-proceed-102847004309.asia-northeast1.run.app"
           - spreadsheet_to_gcs_url: "https://spreadsheet-to-gcs-102847004309.asia-northeast1.run.app"
           - gcs_to_bq_url: "https://gcs-to-bq-102847004309.asia-northeast1.run.app"
           - dwh_job_name: "dwh-datamart-update"
@@ -106,17 +109,115 @@ main:
             failed: ${len(drive_result.body.total_failed)}
 
     # ============================================================
-    # Step 2: 待機 (2分)
+    # Step 2: 待機 (1分)
     # ============================================================
     - step2_wait:
         call: sys.sleep
         args:
-          seconds: 120
+          seconds: 60
 
     # ============================================================
-    # Step 3: spreadsheet-to-gcs (スプレッドシート → GCS)
+    # Step 3: raw-to-proceed (GCS raw/ → proceed/ 変換)
     # ============================================================
-    - step3_spreadsheet_to_gcs:
+    - step3_raw_to_proceed:
+        try:
+          call: http.post
+          args:
+            url: ${raw_to_proceed_url + "/transform"}
+            query:
+              mode: ${mode}
+              target_month: ${target_month}
+            timeout: 1800  # 30分
+            auth:
+              type: OIDC
+          result: raw_to_proceed_result
+        except:
+          as: e
+          steps:
+            - log_raw_to_proceed_error:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    step: "raw-to-proceed"
+                    error: ${e}
+                    message: "HTTP call failed but continuing pipeline"
+            # エラー時もパイプラインを継続するためのデフォルト値設定
+            - set_raw_to_proceed_error_result:
+                assign:
+                  - raw_to_proceed_result:
+                      code: 500
+                      body:
+                        status: "error"
+                        message: ${e}
+
+    # raw_to_proceed結果を変数に格納（単月/全月両方に対応、エラー時もデフォルト値）
+    - extract_raw_to_proceed_counts:
+        assign:
+          - empty_result:
+              success: []
+              errors: []
+              skipped: []
+              total_success: 0
+              total_errors: 0
+              total_skipped: 0
+          - raw_to_proceed_result_body: ${default(map.get(raw_to_proceed_result.body, "result"), empty_result)}
+          - raw_to_proceed_success_count: ${default(map.get(raw_to_proceed_result_body, "total_success"), len(default(map.get(raw_to_proceed_result_body, "success"), [])))}
+          - raw_to_proceed_error_count: ${default(map.get(raw_to_proceed_result_body, "total_errors"), len(default(map.get(raw_to_proceed_result_body, "errors"), [])))}
+          - raw_to_proceed_skipped_count: ${default(map.get(raw_to_proceed_result_body, "total_skipped"), len(default(map.get(raw_to_proceed_result_body, "skipped"), [])))}
+
+    - check_raw_to_proceed_result:
+        switch:
+          # 500エラー等の致命的エラーのみログ出力（継続はする）
+          - condition: ${raw_to_proceed_result.code >= 500}
+            steps:
+              - log_raw_to_proceed_critical:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      step: "raw-to-proceed"
+                      status_code: ${raw_to_proceed_result.code}
+                      message: "critical error but continuing pipeline"
+                      error_message: ${default(map.get(raw_to_proceed_result.body, "message"), "unknown")}
+          # 207 Multi-Status（部分的成功）の場合は警告ログ
+          - condition: ${raw_to_proceed_result.code == 207}
+            steps:
+              - log_raw_to_proceed_partial:
+                  call: sys.log
+                  args:
+                    severity: "WARNING"
+                    json:
+                      step: "raw-to-proceed"
+                      status: "partial_success"
+                      success_count: ${raw_to_proceed_success_count}
+                      error_count: ${raw_to_proceed_error_count}
+                      skipped_count: ${raw_to_proceed_skipped_count}
+
+    - log_raw_to_proceed_success:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            step: "raw-to-proceed"
+            status: "completed"
+            http_status: ${raw_to_proceed_result.code}
+            success_count: ${raw_to_proceed_success_count}
+            error_count: ${raw_to_proceed_error_count}
+            skipped_count: ${raw_to_proceed_skipped_count}
+
+    # ============================================================
+    # Step 4: 待機 (1分)
+    # ============================================================
+    - step4_wait:
+        call: sys.sleep
+        args:
+          seconds: 60
+
+    # ============================================================
+    # Step 5: spreadsheet-to-gcs (スプレッドシート → GCS)
+    # ============================================================
+    - step5_spreadsheet_to_gcs:
         try:
           call: http.post
           args:
@@ -165,17 +266,17 @@ main:
             failed_count: ${len(spreadsheet_result.body.failed)}
 
     # ============================================================
-    # Step 4: 待機 (2分)
+    # Step 6: 待機 (1分)
     # ============================================================
-    - step4_wait:
+    - step6_wait:
         call: sys.sleep
         args:
-          seconds: 120
+          seconds: 60
 
     # ============================================================
-    # Step 5: gcs-to-bq (GCS → BigQuery)
+    # Step 7: gcs-to-bq (GCS proceed/ → BigQuery)
     # ============================================================
-    - step5_gcs_to_bq:
+    - step7_gcs_to_bq:
         try:
           call: http.post
           args:
@@ -222,17 +323,17 @@ main:
             status: "completed"
 
     # ============================================================
-    # Step 6: 待機 (3分)
+    # Step 8: 待機 (1分)
     # ============================================================
-    - step6_wait:
+    - step8_wait:
         call: sys.sleep
         args:
-          seconds: 180
+          seconds: 60
 
     # ============================================================
-    # Step 7: dwh-datamart-update (Cloud Run Job)
+    # Step 9: dwh-datamart-update (Cloud Run Job)
     # ============================================================
-    - step7_execute_job:
+    - step9_execute_job:
         try:
           call: googleapis.run.v1.namespaces.jobs.run
           args:
@@ -297,7 +398,7 @@ main:
             status: "completed"
 
     # ============================================================
-    # Step 8: 完了通知 (未実装)
+    # Step 10: 完了通知 (未実装)
     # ============================================================
     - step8_completion:
         assign:
@@ -315,6 +416,7 @@ main:
             total_duration_seconds: ${total_duration}
             steps_completed:
               - "drive-to-gcs"
+              - "raw-to-proceed"
               - "spreadsheet-to-gcs"
               - "gcs-to-bq"
               - "dwh-datamart-update"
@@ -330,6 +432,10 @@ main:
             drive_to_gcs:
               processed: ${drive_result.body.total_processed}
               failed: ${len(drive_result.body.total_failed)}
+            raw_to_proceed:
+              success: ${raw_to_proceed_success_count}
+              errors: ${raw_to_proceed_error_count}
+              skipped: ${raw_to_proceed_skipped_count}
             spreadsheet_to_gcs:
               success: ${len(spreadsheet_result.body.success)}
               failed: ${len(spreadsheet_result.body.failed)}

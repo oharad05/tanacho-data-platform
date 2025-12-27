@@ -50,6 +50,7 @@ SELECT
   tokyo_branch_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE tokyo_branch_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -69,6 +70,7 @@ SELECT
   construction_sales_department_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE construction_sales_department_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -88,6 +90,7 @@ SELECT
   company_sasaki AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE company_sasaki IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -107,6 +110,7 @@ SELECT
   company_asai AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE company_asai IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -126,6 +130,7 @@ SELECT
   company_ogasawara AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE company_ogasawara IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -145,6 +150,7 @@ SELECT
   company_takaishi AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE company_takaishi IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -164,6 +170,7 @@ SELECT
   glass_construction_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE glass_construction_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -183,6 +190,7 @@ SELECT
   company_yamamoto AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE company_yamamoto IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -202,6 +210,7 @@ SELECT
   glass_building_material_sales_department AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE glass_building_material_sales_department IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -221,6 +230,7 @@ SELECT
   glass_construction AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE glass_construction IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -240,6 +250,7 @@ SELECT
   building_sash AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE building_sash IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -259,6 +270,7 @@ SELECT
   glass_sales AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE glass_sales IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -278,6 +290,7 @@ SELECT
   sash_sales AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE sash_sales IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -297,6 +310,7 @@ SELECT
   sash_finished_products AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE sash_finished_products IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -316,6 +330,7 @@ SELECT
   others AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term`
 WHERE others IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -336,6 +351,7 @@ SELECT
   nagasaki_branch_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE nagasaki_branch_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -355,6 +371,7 @@ SELECT
   glass_construction_dept AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE glass_construction_dept IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -374,6 +391,7 @@ SELECT
   building_sash AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE building_sash IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -393,6 +411,7 @@ SELECT
   construction_sales_department_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE construction_sales_department_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -412,6 +431,7 @@ SELECT
   glass_construction AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE glass_construction IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -431,6 +451,7 @@ SELECT
   sash_construction AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE sash_construction IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -450,6 +471,7 @@ SELECT
   glass_sales AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE glass_sales IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -469,6 +491,7 @@ SELECT
   sash_sales AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE sash_sales IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -488,6 +511,7 @@ SELECT
   finished_products AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE finished_products IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -507,6 +531,7 @@ SELECT
   glass_building_material_sales_department_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_nagasaki`
 WHERE glass_building_material_sales_department_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -527,6 +552,7 @@ SELECT
   fukuoka_branch_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE fukuoka_branch_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -546,6 +572,7 @@ SELECT
   construction_department_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE construction_department_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -565,6 +592,7 @@ SELECT
   glass_construction AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE glass_construction IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -584,6 +612,7 @@ SELECT
   building_sash AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE building_sash IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -603,6 +632,7 @@ SELECT
   interior_construction AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE interior_construction IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -622,6 +652,7 @@ SELECT
   glass_resin_total AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE glass_resin_total IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -641,6 +672,7 @@ SELECT
   glass AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE glass IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -660,6 +692,7 @@ SELECT
   building_materials AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE building_materials IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -679,6 +712,7 @@ SELECT
   resin AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE resin IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -698,6 +732,7 @@ SELECT
   gs_center AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE gs_center IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 UNION ALL
 
@@ -717,6 +752,7 @@ SELECT
   fukuhoku_center AS value
 FROM `data-platform-prod-475201.corporate_data.profit_plan_term_fukuoka`
 WHERE fukuhoku_center IS NOT NULL
+  AND source_folder = CAST(FORMAT_DATE('%Y%m', period) AS INT64)
 
 ) AS subquery
 ;

@@ -13,13 +13,16 @@ DWH: 在庫損益・前受け金（全支店統合）
   - branch_name: 支店名（STRING型）
   - sales_office: 営業所（STRING型）
   - category: カテゴリ（STRING型）
-  - order_backlog: 受注残（INTEGER型）
   - inventory_profit_loss: 在庫損益（INTEGER型）
   - advance_received: 前受け金（INTEGER型）
   - input_status: 入力状態（STRING型）
   - created_at: 作成日時（TIMESTAMP型）
-  - updated_at: 更新日時（TIMESTAMP型）
   - source_branch: ソース支店識別子（STRING型）
+
+注意: 各テーブルのスキーマが異なるため、共通カラムのみを使用
+  - 東京: order_backlogなし、updated_atあり
+  - 長崎: order_backlogあり、updated_atあり
+  - 福岡: order_backlogあり、updated_atなし
 ============================================================
 */
 
@@ -31,12 +34,10 @@ SELECT
   branch_name,
   sales_office,
   category,
-  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,
   created_at,
-  updated_at,
   '東京' AS source_branch
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_tokyo`
 
@@ -48,12 +49,10 @@ SELECT
   branch_name,
   sales_office,
   category,
-  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,
   created_at,
-  updated_at,
   '長崎' AS source_branch
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
 
@@ -65,12 +64,10 @@ SELECT
   branch_name,
   sales_office,
   category,
-  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,
   created_at,
-  updated_at,
   '福岡' AS source_branch
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_fukuoka`
 

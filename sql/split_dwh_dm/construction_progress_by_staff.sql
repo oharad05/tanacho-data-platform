@@ -118,9 +118,11 @@ WITH base_data AS (
       property_number,
       MAX(final_billing_sales_date) AS final_billing_sales_date
     FROM `data-platform-prod-475201.corporate_data.construction_progress_days_final_date`
+    WHERE source_folder = CAST(FORMAT_DATE('%Y%m', final_billing_sales_date) AS INT64)
     GROUP BY property_number
   ) f
     ON a.property_number = f.property_number
+  WHERE a.source_folder = CAST(FORMAT_DATE('%Y%m', a.property_period) AS INT64)
 )
 
 SELECT

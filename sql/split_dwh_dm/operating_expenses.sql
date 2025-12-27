@@ -118,7 +118,7 @@ nagasaki_direct_expenses AS (
 
 nagasaki_allocation_ratios AS (
   -- 案分比率の取得（業務部門案分のみ）
-  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
+  -- 同じ月のsource_folderを参照
   SELECT
     year_month,
     department,
@@ -242,7 +242,7 @@ fukuoka_direct_expenses AS (
 fukuoka_allocation_ratios AS (
   -- 案分比率の取得(業務部門案分のみ)
   -- 硝子建材と樹脂建材は別々に取得（合算しない）
-  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
+  -- 同じ月のsource_folderを参照
   SELECT
     year_month,
     department,

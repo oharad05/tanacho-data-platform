@@ -68,43 +68,19 @@ FISCAL_START_DATE = "2024-09-01"
 
 # 累積型テーブルの定義（各CSVが全期間のデータを含むテーブル）
 # キー毎に最新フォルダ（max(source_folder)）のデータを優先してロード
-CUMULATIVE_TABLE_CONFIG = {
-    "billing_balance": {
-        # ソース: 3_請求残高一覧表（月間）.xlsx
-        "unique_keys": ["sales_month", "branch_code", "branch_name"],
-    },
-    "profit_plan_term": {
-        # ソース: 12_損益目標.xlsx（東京支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "profit_plan_term_nagasaki": {
-        # ソース: 12_損益目標.xlsx（長崎支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "profit_plan_term_fukuoka": {
-        # ソース: 12_損益目標.xlsx（福岡支店目標103期シート）
-        "unique_keys": ["period", "item"],
-    },
-    "ms_allocation_ratio": {
-        # ソース: 10_案分比率マスタ.xlsx
-        "unique_keys": ["year_month", "branch", "department", "category"],
-    },
-    "construction_progress_days_amount": {
-        # ソース: 工事進捗日数金額.xlsx
-        # property_period（パーティション列）も含めてユニークキーとする
-        "unique_keys": ["property_period", "branch_code", "staff_code", "property_number", "customer_code", "contract_date"],
-    },
-    "stocks": {
-        # ソース: 9_在庫.xlsx
-        # 年月・支店・部署・カテゴリでユニーク
-        "unique_keys": ["year_month", "branch", "department", "category"],
-    },
-    "construction_progress_days_final_date": {
-        # ソース: 工事進捗日数最終日.xlsx
-        # 最終請求売上日・物件番号・物件データ区分でユニーク
-        "unique_keys": ["final_billing_sales_date", "property_number", "property_data_classification"],
-    },
-}
+#
+# 2025-12-27: 全テーブルを単月型として扱うように変更
+# 理由: 累積型処理により過去月のsource_folderが消失し、
+#       SQLのJOIN条件（source_folder = year_month）が成立しなくなる問題を回避
+#
+# 以下のテーブルは単月型として扱う（各月のsource_folderを保持）:
+# - billing_balance
+# - profit_plan_term / profit_plan_term_nagasaki / profit_plan_term_fukuoka
+# - ms_allocation_ratio
+# - construction_progress_days_amount
+# - stocks
+# - construction_progress_days_final_date
+CUMULATIVE_TABLE_CONFIG = {}
 
 # テーブル定義とパーティション列のマッピング
 TABLE_CONFIG = {

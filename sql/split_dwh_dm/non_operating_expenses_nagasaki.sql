@@ -178,6 +178,7 @@ construction_inventory AS (
     AND s.branch = '長崎'
     AND s.department = '工事'
     AND s.category IN ('期末未成工事', '当月在庫')
+    AND s.source_folder = CAST(FORMAT_DATE('%Y%m', s.year_month) AS INT64)
   GROUP BY tm.year_month
 ),
 
@@ -192,6 +193,7 @@ glass_inventory AS (
     AND s.branch = '長崎'
     AND s.department = '硝子建材'
     AND s.category IN ('期末未成工事', '当月在庫')
+    AND s.source_folder = CAST(FORMAT_DATE('%Y%m', s.year_month) AS INT64)
   GROUP BY tm.year_month
 ),
 
@@ -200,7 +202,7 @@ glass_inventory AS (
 -- ============================================================
 
 -- ⑧工事部案分比率
--- 注: 実行月と同じsource_folderを参照（PDF準拠）
+-- 注: 同じ月のsource_folderを参照
 construction_allocation AS (
   SELECT
     tm.year_month,
@@ -215,7 +217,7 @@ construction_allocation AS (
 ),
 
 -- ⑧硝子建材部案分比率
--- 注: 実行月と同じsource_folderを参照（PDF準拠）
+-- 注: 同じ月のsource_folderを参照
 glass_allocation AS (
   SELECT
     tm.year_month,

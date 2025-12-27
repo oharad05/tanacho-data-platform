@@ -260,16 +260,29 @@ Looker Studio (ダッシュボード)
 1. Google Drive配置（手動・先方作業）
    ↓
 2. Cloud Workflows: data-pipeline（一括実行）
-   ├─ Step 1: Drive → GCS (drive-to-gcs)
-   ├─ Step 2: 待機 (2分)
-   ├─ Step 3: スプレッドシート → GCS (spreadsheet-to-gcs)
-   ├─ Step 4: 待機 (2分)
-   ├─ Step 5: GCS → BigQuery (gcs-to-bq)
-   ├─ Step 6: 待機 (3分)
-   └─ Step 7: DWH/DataMart更新 (dwh-datamart-update Job)
+   ├─ Step 1: Drive → GCS raw/ (drive-to-gcs)
+   ├─ Step 2: 待機 (1分)
+   ├─ Step 3: GCS raw/ → proceed/ (raw-to-proceed) ※source_folder追加
+   ├─ Step 4: 待機 (1分)
+   ├─ Step 5: スプレッドシート → GCS (spreadsheet-to-gcs)
+   ├─ Step 6: 待機 (1分)
+   ├─ Step 7: GCS proceed/ → BigQuery (gcs-to-bq)
+   ├─ Step 8: 待機 (1分)
+   └─ Step 9: DWH/DataMart更新 (dwh-datamart-update Job)
    ↓
 3. Looker Studio可視化
 ```
+
+### source_folderカラム
+
+以下のテーブルには、raw-to-proceedサービスで `source_folder` カラムが追加されます。
+これにより、どのフォルダ（YYYYMM）からデータを取得したかを追跡できます。
+
+- billing_balance
+- profit_plan_term / profit_plan_term_nagasaki / profit_plan_term_fukuoka
+- ms_allocation_ratio
+- construction_progress_days_amount / construction_progress_days_final_date
+- stocks
 
 ### 自動化範囲
 
@@ -286,6 +299,7 @@ Looker Studio (ダッシュボード)
 
 **Cloud Run Services**:
 - `drive-to-gcs` (asia-northeast1) - run_service/main.py
+- `raw-to-proceed` (asia-northeast1) - raw_to_proceed_service/main.py ※source_folder追加
 - `gcs-to-bq` (asia-northeast1) - gcs_to_bq_service/main.py
 - `spreadsheet-to-gcs` (asia-northeast1) - spreadsheet_service/main.py
 

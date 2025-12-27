@@ -92,7 +92,7 @@ nagasaki_direct_loss AS (
 
 nagasaki_allocation_ratios AS (
   -- 案分比率の取得（業務部門案分のみ）
-  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
+  -- 同じ月のsource_folderを参照
   SELECT
     year_month,
     department,
@@ -160,7 +160,7 @@ fukuoka_direct_loss AS (
 
 fukuoka_allocation_ratios AS (
   -- 案分比率の取得(業務部門案分のみ)、硝子樹脂は合算
-  -- year_monthと同一のyyyymmを持つsource_folderのレコードを使用
+  -- 同じ月のsource_folderを参照
   SELECT
     year_month,
     CASE
