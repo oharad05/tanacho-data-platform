@@ -13,6 +13,7 @@ DWH: 在庫損益・前受け金（全支店統合）
   - branch_name: 支店名（STRING型）
   - sales_office: 営業所（STRING型）
   - category: カテゴリ（STRING型）
+  - order_backlog: 受注残（INTEGER型）
   - inventory_profit_loss: 在庫損益（INTEGER型）
   - advance_received: 前受け金（INTEGER型）
   - input_status: 入力状態（STRING型）
@@ -26,10 +27,10 @@ DWH: 在庫損益・前受け金（全支店統合）
       - 長崎支店 × 長崎支店 × 長崎支店
     - 0: 上記以外
 
-注意: 各テーブルのスキーマが異なるため、共通カラムのみを使用
-  - 東京: order_backlogなし、updated_atあり
-  - 長崎: order_backlogあり、updated_atあり
-  - 福岡: order_backlogあり、updated_atなし
+注意: 各テーブルのスキーマが若干異なるが、全テーブルにorder_backlogあり
+  - 東京: updated_atあり
+  - 長崎: updated_atあり
+  - 福岡: updated_atなし
 ============================================================
 */
 
@@ -41,6 +42,7 @@ SELECT
   branch_name,
   sales_office,
   category,
+  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,
@@ -61,6 +63,7 @@ SELECT
   branch_name,
   sales_office,
   category,
+  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,
@@ -81,6 +84,7 @@ SELECT
   branch_name,
   sales_office,
   category,
+  order_backlog,
   inventory_profit_loss,
   advance_received,
   input_status,

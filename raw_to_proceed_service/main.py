@@ -393,6 +393,43 @@ def apply_monetary_scale_conversion(df: pd.DataFrame, table_name: str, config_df
     return df
 
 
+def reorder_columns_for_bigquery(df: pd.DataFrame, table_name: str, column_mapping: Dict) -> pd.DataFrame:
+    """
+    BigQueryスキーマ順序に合わせてカラムをリオーダー
+
+    BigQueryテーブルのスキーマ順序はテーブルごとに異なるため、
+    パーティションフィールドを先頭に配置する必要があるテーブルのみ処理する。
+
+    Args:
+        df: リオーダー対象のDataFrame（英語カラム名に変換済み）
+        table_name: テーブル名
+        column_mapping: カラムマッピング辞書
+
+    Returns:
+        カラム順序を調整したDataFrame
+    """
+    # パーティションフィールドを先頭に配置する必要があるテーブルのみ定義
+    # （BigQueryスキーマでパーティションフィールドが先頭にあるテーブル）
+    TABLES_WITH_PARTITION_FIRST = {
+        "stocks": "year_month",
+        "ms_allocation_ratio": "year_month",
+    }
+
+    partition_field = TABLES_WITH_PARTITION_FIRST.get(table_name)
+
+    if not partition_field or partition_field not in df.columns:
+        # 対象外テーブルまたはパーティションフィールドがない場合はそのまま返す
+        return df
+
+    # パーティションフィールドを先頭に移動
+    cols = list(df.columns)
+    if partition_field in cols:
+        cols.remove(partition_field)
+        cols = [partition_field] + cols
+
+    return df[cols]
+
+
 def apply_zero_date_to_null_conversion(df: pd.DataFrame, table_name: str, config_df: pd.DataFrame) -> pd.DataFrame:
     """ゼロ日付をnullに変換"""
     if config_df.empty:
@@ -470,6 +507,10 @@ def transform_excel_to_csv(
 
         # ゼロ日付変換
         df = apply_zero_date_to_null_conversion(df, table_name, zero_date_config)
+
+        # BigQueryスキーマ順序に合わせてカラムをリオーダー
+        # パーティションフィールドを先頭に配置（BigQueryテーブル作成時の順序と一致させる）
+        df = reorder_columns_for_bigquery(df, table_name, column_mapping)
 
         # CSV出力
         csv_buffer = io.StringIO()

@@ -1089,13 +1089,158 @@ def delete_partition_data(
         print(f"   ⚠️  削除処理スキップ: {e}")
         return True
 
+def load_csv_batch_to_bigquery(
+    bq_client: bigquery.Client,
+    storage_client: storage.Client,
+    table_name: str,
+    target_months: list,
+    execution_id: str = None,
+    max_retries: int = 3
+) -> bool:
+    """
+    複数月のCSVファイルを一括でBigQueryにロード（レート制限対策）
+
+    Args:
+        bq_client: BigQueryクライアント
+        storage_client: GCSクライアント
+        table_name: テーブル名
+        target_months: 対象年月リスト
+        execution_id: 実行ID
+        max_retries: 最大リトライ回数
+
+    Returns:
+        成功時True
+    """
+    import time
+
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+    exec_id = execution_id or get_execution_id()
+    bucket = storage_client.bucket(LANDING_BUCKET)
+
+    # 存在するCSVファイルのURIリストを作成
+    gcs_uris = []
+    for yyyymm in target_months:
+        blob = bucket.blob(f"google-drive/proceed/{yyyymm}/{table_name}.csv")
+        if blob.exists():
+            gcs_uris.append(f"gs://{LANDING_BUCKET}/google-drive/proceed/{yyyymm}/{table_name}.csv")
+            print(f"   📁 {yyyymm}: ファイル確認OK")
+
+    if not gcs_uris:
+        print(f"   ⚠️  CSVファイルが見つかりません")
+        return False
+
+    print(f"   📊 一括ロード対象: {len(gcs_uris)}ファイル")
+
+    # リトライロジック付きでロード
+    for attempt in range(max_retries):
+        try:
+            job_config = bigquery.LoadJobConfig(
+                source_format=bigquery.SourceFormat.CSV,
+                skip_leading_rows=1,
+                autodetect=False,
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                schema_update_options=[
+                    bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION,
+                ],
+                allow_quoted_newlines=True,
+                allow_jagged_rows=False,
+                ignore_unknown_values=False,
+                max_bad_records=0,
+            )
+
+            # 複数URIを一括でロード
+            load_job = bq_client.load_table_from_uri(
+                gcs_uris,  # リストで渡す
+                table_id,
+                job_config=job_config
+            )
+
+            print(f"   ⏳ 一括ロード開始: {table_name} (Job ID: {load_job.job_id})")
+
+            load_job.result(timeout=600)  # 複数ファイルなのでタイムアウトを延長
+
+            destination_table = bq_client.get_table(table_id)
+            print(f"   ✅ ロード完了: {load_job.output_rows} 行を追加")
+            print(f"      総レコード数: {destination_table.num_rows:,} 行")
+
+            # 統一ログ出力
+            log_pipeline_event(
+                action="load_table_batch",
+                status="OK",
+                message=f"テーブル {table_name} の一括ロード完了",
+                table_name=table_name,
+                details={
+                    "target_months": target_months,
+                    "file_count": len(gcs_uris),
+                    "rows_added": load_job.output_rows,
+                    "total_rows": destination_table.num_rows
+                },
+                execution_id=exec_id
+            )
+
+            return True
+
+        except GoogleCloudError as e:
+            error_str = str(e)
+
+            # ファイルが存在しない場合はスキップ
+            if "Not found" in error_str or "notFound" in error_str:
+                print(f"   ⚠️  一部ファイルが存在しないためスキップ")
+                return False
+
+            # レート制限エラーの場合はリトライ
+            if "rate limit" in error_str.lower() or "exceeded" in error_str.lower():
+                wait_time = (2 ** attempt) * 5  # 5, 10, 20秒
+                print(f"   ⚠️  レート制限エラー: {wait_time}秒後にリトライ ({attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+                continue
+
+            # その他のエラー
+            print(f"   ❌ ロードエラー: {e}")
+            if hasattr(e, 'errors') and e.errors:
+                for error in e.errors:
+                    print(f"      詳細: {error}")
+
+            log_pipeline_event(
+                action="load_table_batch",
+                status="ERROR",
+                message=f"テーブル {table_name} の一括ロードに失敗",
+                table_name=table_name,
+                details={
+                    "target_months": target_months,
+                    "error": str(e)
+                },
+                execution_id=exec_id
+            )
+            return False
+
+        except Exception as e:
+            print(f"   ❌ 予期しないエラー: {e}")
+            log_pipeline_event(
+                action="load_table_batch",
+                status="ERROR",
+                message=f"テーブル {table_name} の一括ロードで予期しないエラー",
+                table_name=table_name,
+                details={
+                    "target_months": target_months,
+                    "error": str(e)
+                },
+                execution_id=exec_id
+            )
+            return False
+
+    # リトライ上限到達
+    print(f"   ❌ リトライ上限に到達: {table_name}")
+    return False
+
+
 def load_csv_to_bigquery(
     bq_client: bigquery.Client,
     table_name: str,
     yyyymm: str,
     execution_id: str = None
 ) -> bool:
-    """CSVファイルをBigQueryにロード"""
+    """CSVファイルをBigQueryにロード（単一ファイル用、後方互換性のため残存）"""
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     gcs_uri = f"gs://{LANDING_BUCKET}/google-drive/proceed/{yyyymm}/{table_name}.csv"
     exec_id = execution_id or get_execution_id()
@@ -1975,18 +2120,16 @@ def load_endpoint():
                     bq_client, storage_client, table_name, target_months, exec_id
                 )
             else:
-                # 単月型テーブル: 従来の処理
+                # 単月型テーブル: ワイルドカードで一括ロード（レート制限対策）
                 print(f"\n📊 処理中（単月型）: {table_name}")
 
                 # 2024/9以降のデータを全て削除（テーブルごとに1回だけ）
                 delete_partition_data(bq_client, table_name)
 
-                # 全年月のCSVをロード
-                table_success = True
-                for month in target_months:
-                    result = load_csv_to_bigquery(bq_client, table_name, month, exec_id)
-                    if result is False:  # None（スキップ）は成功として扱う
-                        table_success = False
+                # 全年月のCSVを一括ロード（ワイルドカード使用）
+                table_success = load_csv_batch_to_bigquery(
+                    bq_client, storage_client, table_name, target_months, exec_id
+                )
 
                 if table_success:
                     # テーブルとカラムの説明を更新
