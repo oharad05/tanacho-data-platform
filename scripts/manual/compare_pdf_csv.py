@@ -43,6 +43,16 @@ def normalize_secondary_category(cat: str) -> str:
     return cat.strip()
 
 
+def normalize_text_for_comparison(text: str) -> str:
+    """比較用にテキストを正規化（括弧の全角/半角統一など）"""
+    if pd.isna(text):
+        return ""
+    text = str(text)
+    # 全角括弧を半角に統一
+    text = text.replace("（", "(").replace("）", ")")
+    return text.strip()
+
+
 def parse_number(val) -> float:
     """数値をパース（カンマ区切り、%記号対応）"""
     if pd.isna(val) or val == "" or val == "-":
@@ -95,7 +105,7 @@ def load_pdf_data(branch: str, month: str) -> pd.DataFrame:
 
     # 区分（大）が空の場合は前の値を引き継ぐ（PDFの構造上）
     if "区分（大）" in df.columns:
-        df["区分（大）"] = df["区分（大）"].fillna(method="ffill")
+        df["区分（大）"] = df["区分（大）"].ffill()
 
     return df
 
@@ -108,10 +118,18 @@ def load_csv_data_for_branch(month: str, branch: str) -> pd.DataFrame:
         print(f"CSV file not found: {csv_path}")
         return pd.DataFrame()
 
-    # ヘッダー行を2行読み込む
-    branch_header_row = pd.read_csv(csv_path, encoding="utf-8", nrows=1, header=None)
-    dept_header_row = pd.read_csv(csv_path, encoding="utf-8", skiprows=1, nrows=1, header=None)
-    data_df = pd.read_csv(csv_path, encoding="utf-8", skiprows=2, header=None)
+    # SS CSVの構造：
+    # 行1-3: 空行
+    # 行6 (index 5): 支店名ヘッダー (東京支店, 長崎支店, 福岡支店)
+    # 行8 (index 7): カラム名 (main_category, secondary_category, 東京支店計, 工事営業部計, etc.)
+    # 行9以降 (index 8+): データ
+
+    # 支店名ヘッダー行を読み込む (行6 = skiprows=5)
+    branch_header_row = pd.read_csv(csv_path, encoding="utf-8", skiprows=5, nrows=1, header=None)
+    # カラム名ヘッダー行を読み込む (行8 = skiprows=7)
+    dept_header_row = pd.read_csv(csv_path, encoding="utf-8", skiprows=7, nrows=1, header=None)
+    # データ行を読み込む (行9以降 = skiprows=8)
+    data_df = pd.read_csv(csv_path, encoding="utf-8", skiprows=8, header=None)
 
     # 支店のカラム範囲を特定
     csv_branch_header = BRANCHES[branch]["csv_branch_header"]
@@ -120,33 +138,28 @@ def load_csv_data_for_branch(month: str, branch: str) -> pd.DataFrame:
     # 支店の開始・終了インデックスを特定
     start_idx = None
     end_idx = None
+    all_branches = ["東京支店", "長崎支店", "福岡支店"]
 
     for i, val in enumerate(branch_row):
         if pd.notna(val) and str(val).strip() == csv_branch_header:
             start_idx = i
-        elif start_idx is not None and pd.notna(val) and str(val).strip() in ["長崎支店", "福岡支店", ""]:
-            if str(val).strip() != csv_branch_header and str(val).strip() != "":
+        elif start_idx is not None and pd.notna(val):
+            val_str = str(val).strip()
+            if val_str in all_branches and val_str != csv_branch_header:
                 end_idx = i
                 break
 
-    # 終了インデックスが見つからない場合は最後まで
+    # 終了インデックスが見つからない場合は最後まで（最後の支店の場合）
     if start_idx is not None and end_idx is None:
-        # 次の支店を探す
-        next_branches = [b for b in ["東京支店", "長崎支店", "福岡支店"] if b != csv_branch_header]
-        for i in range(start_idx + 1, len(branch_row)):
-            val = branch_row.iloc[i]
-            if pd.notna(val) and str(val).strip() in next_branches:
-                end_idx = i
-                break
-        if end_idx is None:
-            end_idx = len(branch_row)
+        end_idx = len(branch_row)
 
     if start_idx is None:
         print(f"Branch {branch} not found in CSV headers")
         return pd.DataFrame()
 
-    # main_category と secondary_category のカラムは常に0,1
-    selected_cols = [0, 1] + list(range(start_idx, end_idx))
+    # main_category と secondary_category のカラムは常に列1,3 (0-indexed)
+    # 列0: main_category_sort_order, 列1: main_category, 列2: secondary_category_sort_order, 列3: secondary_category
+    selected_cols = [1, 3] + list(range(start_idx, end_idx))
 
     # 該当カラムのみ抽出
     dept_headers = dept_header_row.iloc[0, start_idx:end_idx].tolist()
@@ -155,6 +168,9 @@ def load_csv_data_for_branch(month: str, branch: str) -> pd.DataFrame:
 
     result_df = data_df.iloc[:, selected_cols].copy()
     result_df.columns = all_headers
+
+    # main_categoryのforward-fill（SS CSVではmain_categoryが最初の行にのみあり、続く行はNaN）
+    result_df["main_category"] = result_df["main_category"].ffill()
 
     return result_df
 
@@ -173,23 +189,34 @@ def compare_branch_month(branch: str, month: str) -> list:
     # PDF行をループ
     for _, pdf_row in pdf_df.iterrows():
         pdf_main_cat = normalize_main_category(pdf_row.get("区分（大）", ""))
-        pdf_sec_cat = normalize_secondary_category(pdf_row.get("区分（小）", ""))
+        pdf_sec_cat_raw = str(pdf_row.get("区分（小）", "")) if pd.notna(pdf_row.get("区分（小）", None)) else ""
+        pdf_sec_cat = normalize_secondary_category(pdf_sec_cat_raw)
 
-        # 前年比%、目標比%は除外
+        # 前年比%、目標比%は除外（ユーザー指示1）
         if "前年比" in pdf_sec_cat or "目標比" in pdf_sec_cat:
             continue
 
         # 経常利益の特殊なsecondary_category対応
         csv_sec_cat_match = pdf_sec_cat
-        if pdf_sec_cat in ["当月経常利益", "目標経常利益", "累計経常利益", "目標累積経常利益"]:
+        csv_main_cat_match = pdf_main_cat
+
+        if pdf_sec_cat in ["当月経常利益", "目標経常利益", "累計経常利益", "目標累積経常利益", "本年累計目標", "本年累計実績"]:
             if pdf_sec_cat == "当月経常利益":
                 csv_sec_cat_match = "本年実績"
             elif pdf_sec_cat == "目標経常利益":
                 csv_sec_cat_match = "本年目標"
-            elif pdf_sec_cat == "累計経常利益":
+            elif pdf_sec_cat in ["累計経常利益", "本年累計実績"]:
                 csv_sec_cat_match = "累積本年実績"
-            elif pdf_sec_cat == "目標累積経常利益":
+            elif pdf_sec_cat in ["目標累積経常利益", "本年累計目標"]:
                 csv_sec_cat_match = "累積本年目標"
+
+        # その他損益の対応（PDF: その他損益配下、SS: 独立した行）
+        # PDFの「その他損益」配下のsecondary_categoryは、SSでは独立したmain_categoryになる
+        if pdf_main_cat == "その他損益":
+            # PDFのsecondary_categoryをSSのmain_categoryとして扱う
+            # 例: PDF secondary_category="営業外収入(リベート)" → SS main_category="営業外収入（リベート）"
+            csv_main_cat_match = normalize_text_for_comparison(pdf_sec_cat)
+            csv_sec_cat_match = "本年実績"  # SSでは全て「本年実績(千円)」
 
         # CSVから該当行を探す
         csv_match = None
@@ -197,12 +224,18 @@ def compare_branch_month(branch: str, month: str) -> list:
             csv_main_cat = normalize_main_category(csv_row.get("main_category", ""))
             csv_sec_cat = normalize_secondary_category(csv_row.get("secondary_category", ""))
 
-            if csv_main_cat == pdf_main_cat and csv_sec_cat == csv_sec_cat_match:
+            # 括弧の全角/半角を正規化して比較
+            csv_main_cat_normalized = normalize_text_for_comparison(csv_main_cat)
+            csv_sec_cat_normalized = normalize_text_for_comparison(csv_sec_cat)
+            csv_main_cat_match_normalized = normalize_text_for_comparison(csv_main_cat_match)
+            csv_sec_cat_match_normalized = normalize_text_for_comparison(csv_sec_cat_match)
+
+            if csv_main_cat_normalized == csv_main_cat_match_normalized and csv_sec_cat_normalized == csv_sec_cat_match_normalized:
                 csv_match = csv_row
                 break
 
         if csv_match is None:
-            # CSVで該当行が見つからない
+            # CSVで該当行が見つからない場合、デバッグ用にスキップ
             continue
 
         # PDF の各部門の値を比較
@@ -219,15 +252,18 @@ def compare_branch_month(branch: str, month: str) -> list:
             if csv_dept in csv_match.index:
                 csv_val = csv_match[csv_dept]
 
-            # 利益率の場合は%表記とdecimal表記の変換
-            if pdf_main_cat in ["売上総利益率"] and pdf_val is not None:
-                # PDFは%表記（例: 10.90）、CSVはdecimal（例: 0.109）
-                # CSVの値を100倍して比較
+            # 売上総利益率の処理（ユーザー指示2）
+            if pdf_main_cat in ["売上総利益率"]:
+                # PDFは%表記（例: 26.6）、CSVはdecimal（例: 0.266）
+                # CSVの値を100倍して小数第一位まで四捨五入
                 if csv_val is not None and not pd.isna(csv_val):
                     try:
-                        csv_val = float(csv_val) * 100
+                        csv_val = round(float(csv_val) * 100, 1)
                     except (ValueError, TypeError):
                         csv_val = None
+                # PDFの値も小数第一位まで四捨五入
+                if pdf_val is not None:
+                    pdf_val = round(pdf_val, 1)
             else:
                 if csv_val is not None and not pd.isna(csv_val):
                     try:
@@ -245,23 +281,42 @@ def compare_branch_month(branch: str, month: str) -> list:
 
             if pdf_val is not None and csv_val is not None:
                 diff = pdf_val - csv_val
-                # 小数点以下の誤差を考慮
-                if abs(diff) < 1:
-                    is_equal = 1
-                if abs(diff) >= 6:
-                    is_large_diff = 1
+                # 小数点以下の誤差を考慮（売上総利益率は0.5%以内）
+                if pdf_main_cat in ["売上総利益率"]:
+                    if abs(diff) < 0.5:
+                        is_equal = 1
+                    if abs(diff) >= 2:  # 利益率は2%以上の差を大きな差分とする
+                        is_large_diff = 1
+                else:
+                    if abs(diff) < 1:
+                        is_equal = 1
+                    if abs(diff) >= 6:
+                        is_large_diff = 1
             elif pdf_val is not None and csv_val is None:
                 diff = pdf_val
-                is_large_diff = 1 if abs(pdf_val) >= 6 else 0
+                if pdf_main_cat in ["売上総利益率"]:
+                    is_large_diff = 1 if abs(pdf_val) >= 2 else 0
+                else:
+                    is_large_diff = 1 if abs(pdf_val) >= 6 else 0
             elif pdf_val is None and csv_val is not None:
                 diff = -csv_val
-                is_large_diff = 1 if abs(csv_val) >= 6 else 0
+                if pdf_main_cat in ["売上総利益率"]:
+                    is_large_diff = 1 if abs(csv_val) >= 2 else 0
+                else:
+                    is_large_diff = 1 if abs(csv_val) >= 6 else 0
+
+            # その他損益の場合、main_categoryをsecondary_categoryに変更して出力
+            output_main_cat = pdf_main_cat
+            output_sec_cat = pdf_sec_cat
+            if pdf_main_cat == "その他損益":
+                output_main_cat = pdf_sec_cat
+                output_sec_cat = "本年実績"
 
             results.append({
                 "main_department": branch,
                 "year_month": month,
-                "main_category": pdf_main_cat,
-                "secondary_category": pdf_sec_cat,
+                "main_category": output_main_cat,
+                "secondary_category": output_sec_cat,
                 "secondary_department": pdf_dept,
                 "pdf_val": pdf_val,
                 "csv_val": csv_val,

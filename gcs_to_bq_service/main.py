@@ -1045,12 +1045,14 @@ def delete_partition_data(
     table_name: str,
     yyyymm: str = None  # 未使用（後方互換性のため残す）
 ) -> bool:
-    """2024年9月以降のパーティションデータを全て削除（冪等性保証）"""
+    """2024年1月以降のパーティションデータを全て削除（冪等性保証）"""
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
     partition_field = TABLE_CONFIG[table_name]["partition_field"]
 
-    # 期首: 2024年9月1日以降を全て削除
-    start_date = "2024-09-01"
+    # 2024年1月1日以降を全て削除
+    # ※stocksテーブルはsource_folderの1ヶ月前のyear_monthを持つため、
+    #   2024/9開始だと2024/8のデータが削除されない問題を回避
+    start_date = "2024-01-01"
 
     # slip_date や final_billing_sales_date など、月の1日以外の日付が入るフィールドは
     # 日付比較で対応
@@ -1072,7 +1074,7 @@ def delete_partition_data(
         """
 
     try:
-        print(f"   🗑️  既存データ削除中: {start_date}以降")
+        print(f"   🗑️  既存データ削除中: {start_date}以降（partition_field: {partition_field}）")
         query_job = bq_client.query(delete_query)
         query_job.result()
 
@@ -1945,7 +1947,7 @@ def load_endpoint():
         print("=" * 60)
         print(f"proceed/ → BigQuery ロード処理")
         print(f"対象年月: {', '.join(target_months)}")
-        print(f"モード: REPLACE（2024/9以降のデータを全て削除して再ロード）")
+        print(f"モード: REPLACE（2024/1以降のデータを全て削除して再ロード）")
         print("=" * 60)
 
         # 処理開始ログ

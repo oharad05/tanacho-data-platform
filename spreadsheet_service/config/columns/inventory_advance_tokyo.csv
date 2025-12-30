@@ -3,7 +3,6 @@ jp_name,en_name,data_type
 支店名,branch_name,STRING
 営業所,sales_office,STRING
 分類,category,STRING
-受注残(円),order_backlog,INTEGER
 在庫損益(円),inventory_profit_loss,INTEGER
 前受け金(円),advance_received,INTEGER
 入力状況,input_status,STRING

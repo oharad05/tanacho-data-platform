@@ -18,6 +18,13 @@ DWH: 在庫損益・前受け金（全支店統合）
   - input_status: 入力状態（STRING型）
   - created_at: 作成日時（TIMESTAMP型）
   - source_branch: ソース支店識別子（STRING型）
+  - display_flag: 表示フラグ（INTEGER型）
+    - 1: 以下の条件に該当
+      - 東京支店 × 工事
+      - 東京支店 × 硝子建材
+      - 福岡支店 × 福岡支店 × 福岡支店
+      - 長崎支店 × 長崎支店 × 長崎支店
+    - 0: 上記以外
 
 注意: 各テーブルのスキーマが異なるため、共通カラムのみを使用
   - 東京: order_backlogなし、updated_atあり
@@ -38,7 +45,12 @@ SELECT
   advance_received,
   input_status,
   created_at,
-  '東京' AS source_branch
+  '東京' AS source_branch,
+  -- 東京支店 × 工事 または 東京支店 × 硝子建材 の場合は1
+  CASE
+    WHEN branch_name = '東京支店' AND sales_office IN ('工事', '硝子建材') THEN 1
+    ELSE 0
+  END AS display_flag
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_tokyo`
 
 UNION ALL
@@ -53,7 +65,12 @@ SELECT
   advance_received,
   input_status,
   created_at,
-  '長崎' AS source_branch
+  '長崎' AS source_branch,
+  -- 長崎支店 × 長崎支店 × 長崎支店 の場合は1
+  CASE
+    WHEN branch_name = '長崎支店' AND sales_office = '長崎支店' AND category = '長崎支店' THEN 1
+    ELSE 0
+  END AS display_flag
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_nagasaki`
 
 UNION ALL
@@ -68,7 +85,12 @@ SELECT
   advance_received,
   input_status,
   created_at,
-  '福岡' AS source_branch
+  '福岡' AS source_branch,
+  -- 福岡支店 × 福岡支店 × 福岡支店 の場合は1
+  CASE
+    WHEN branch_name = '福岡支店' AND sales_office = '福岡支店' AND category = '福岡支店' THEN 1
+    ELSE 0
+  END AS display_flag
 FROM `data-platform-prod-475201.corporate_data.ss_inventory_advance_fukuoka`
 
 ORDER BY posting_month, source_branch, category;
