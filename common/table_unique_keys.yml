@@ -5,6 +5,7 @@ tables:
   # 累積型テーブル（複数フォルダのデータを結合して重複排除が必要）
   billing_balance:
     unique_keys:
+      - source_folder
       - sales_month
       - branch_code
       - branch_name
@@ -12,6 +13,7 @@ tables:
 
   profit_plan_term:
     unique_keys:
+      - source_folder
       - period
       - item
     type: cumulative
@@ -22,6 +24,7 @@ tables:
 
   ms_allocation_ratio:
     unique_keys:
+      - source_folder
       - year_month
       - branch
       - department
@@ -30,6 +33,7 @@ tables:
 
   construction_progress_days_amount:
     unique_keys:
+      - source_folder
       - property_period
       - branch_code
       - staff_code
@@ -40,6 +44,7 @@ tables:
 
   construction_progress_days_final_date:
     unique_keys:
+      - source_folder
       - final_billing_sales_date
       - property_number
       - property_data_classification
@@ -47,6 +52,7 @@ tables:
 
   stocks:
     unique_keys:
+      - source_folder
       - year_month
       - branch
       - department
@@ -87,19 +93,25 @@ tables:
   ss_inventory_advance_tokyo:
     unique_keys:
       - posting_month
-      - item
+      - branch_name
+      - sales_office
+      - category
     type: spreadsheet
 
   ss_inventory_advance_nagasaki:
     unique_keys:
       - posting_month
-      - item
+      - branch_name
+      - sales_office
+      - category
     type: spreadsheet
 
   ss_inventory_advance_fukuoka:
     unique_keys:
       - posting_month
-      - item
+      - branch_name
+      - sales_office
+      - category
     type: spreadsheet
 
   # 経営資料（スプレッドシート連携）

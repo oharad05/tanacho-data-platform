@@ -63,7 +63,9 @@ pdf名: 2508(確定)損益長崎_202508.pdfの2ページ目(「2025.8確定」�
 pdf名: 2508(確定)損益福岡_202508.pdfの2ページ目「9~8月確定」と書いてある以下の項目)
 
 ### 手順1-2.比較結果の出力
-確認結果を､csv出力できる形式で､docs/test/{支店名}/{yyyymm}/test_output_{実行日のyyyymmdd}.csvという名前で出力してください｡項目は下記です｡
+確認結果を､csv出力できる形式で､docs/test/{支店名}/{yyyymm}/test_output_all_{実行日のyyyymmdd}.csvという名前で出力してください｡
+項目は下記です｡
+
 main_category
 secondary_category
 secondary_department
@@ -73,6 +75,9 @@ diff_pdf_csv(pdf_val-csv_val)
 is_equal(diff_pdf_csv=0なら1､そうでないならゼロ)
 is_large_diff(diff_pdf_csvの絶対値が6以上なら1､そうでないなら0)
 invest_result(一旦nullで定義)
+
+上記ファイルが出力完了後､､yyyymmのカラム(値はテストしたyyyymm)branchのカラム(値はテストした支店名)の2カラムを､全ての結果を縦に結合したファイルに追加したファイルをdocs/test/test_output_all_{実行時点のyyyymmhhss}.csvという名前で出力してください｡
+出力が完了後､「yyyymm×main_department×secondary_depart×main_category×secondary_category毎に紐づいた・紐づかなかった件数」を表示してください｡
 
 ### 手順1-3.調査結果・提案の入力及びファイル出力
 invest_resultに､調査した結果をテキストで入力してください｡
